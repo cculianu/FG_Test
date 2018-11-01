@@ -42,7 +42,13 @@
   <widget class="QStatusBar" name="statusBar"/>
   <action name="actionDebug_Console">
    <property name="text">
-    <string>Debug Console</string>
+    <string>&amp;Debug Console</string>
+   </property>
+   <property name="iconText">
+    <string>&amp;Debug Console</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+D</string>
    </property>
   </action>
  </widget>

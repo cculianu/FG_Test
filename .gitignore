@@ -42,3 +42,6 @@ target_wrapper.*
 # QtCreator CMake
 CMakeLists.txt.user*
 
+# Misc Crap
+.DS_Store
+

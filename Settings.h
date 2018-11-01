@@ -43,12 +43,18 @@ struct Settings
         int verbosity; ///< default 2 -- if 0, suppress console messages and Debug() messages from console window output
     };
 
+    struct Appearance {
+        bool useDarkStyle;
+    };
+
     Other other;
+    Appearance appearance;
 
     enum Scope {
         Main = 1, // everything at top-level except for stuff under .transient
-        Other = 2, // everything in struct Other (.other)
-        All = Other|Main
+        Other = 2, // everything in struct Other (.other),
+        Appearance = 4, // evrything in struct Appearance
+        All = Main|Other|Appearance
     };
 
     void load(int scope = All); ///< load from QSettings object

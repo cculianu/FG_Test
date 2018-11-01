@@ -28,16 +28,19 @@ namespace {
 }
 
 App::App(int argc, char **argv)
-    : QApplication(argc, argv), destructing(false)
+    : QApplication(argc, argv),
+      destructing(false), debugWin(nullptr), sysTray(nullptr), trayMenu(nullptr)
 {
-    QFile f(":qdarkstyle/style.qss");
-    if (!f.exists()) {
-        Error("Unable to set stylesheet, file not found\n");
-    } else {
-        f.open(QFile::ReadOnly | QFile::Text);
-        QTextStream ts(&f);
-        setStyleSheet(ts.readAll());
-        Debug() << "Set Style to: QDarkStyle";
+    if (settings.appearance.useDarkStyle) {
+        QFile f(":qdarkstyle/style.qss");
+        if (!f.exists()) {
+            Error("Unable to set stylesheet, file not found");
+        } else {
+            f.open(QFile::ReadOnly | QFile::Text);
+            QTextStream ts(&f);
+            setStyleSheet(ts.readAll());
+            Debug() << "Set Style to: Dark Style";
+        }
     }
     setApplicationName(APPNAME);
     setApplicationVersion(VERSION_STR);
@@ -75,6 +78,9 @@ App::App(int argc, char **argv)
 App::~App() /* override */
 {
     destructing = true;
+    delete debugWin; debugWin = nullptr;
+    delete trayMenu; trayMenu = nullptr;
+    delete sysTray; sysTray = nullptr;
 }
 
 bool App::event(QEvent *e) /* override */

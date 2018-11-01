@@ -46,6 +46,9 @@ void DebugWindow::printSettings(const Settings &s)
 {
     ui->settingsTB->clear();
     ui->settingsTB->append(s.toPrettyString());
+    auto tc = ui->settingsTB->textCursor();
+    tc.setPosition(0);
+    ui->settingsTB->setTextCursor(tc);
 }
 
 void DebugWindow::clearLog()

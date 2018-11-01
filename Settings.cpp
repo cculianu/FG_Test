@@ -54,6 +54,9 @@ void Settings::load(int scope)
     if (scope & Other) {
         other.verbosity = s.value("verbosity", 2).toInt();
     }
+    if (scope & Appearance) {
+        appearance.useDarkStyle = s.value("useDarkStyle", true).toBool();
+    }
 }
 
 void Settings::save(int scope)
@@ -68,6 +71,9 @@ void Settings::save(int scope)
     if (scope & Other) {
         s.setValue("verbosity", other.verbosity);
     }
+    if (scope & Appearance) {
+        s.setValue("useDarkStyle", appearance.useDarkStyle);
+    }
 }
 
 QString Settings::toPrettyString() const
@@ -79,6 +85,7 @@ QString Settings::toPrettyString() const
         ts << "savePrefix = " << savePrefix << "\n";
         ts << "format = " << fmt2String(format, false) << "\n";
         ts << "verbosity = " << other.verbosity << "\n";
+        ts << "useDarkStyle = " << appearance.useDarkStyle << "\n";
         ts.flush();
     }
     return ret;

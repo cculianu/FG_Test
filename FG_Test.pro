@@ -45,7 +45,8 @@ FORMS += \
     DebugWindow.ui
 
 RESOURCES += \
-    Resources.qrc
+    Resources.qrc \
+    qdarkstyle/style.qrc
 
 macx {
     LIBS += -framework CoreServices

@@ -30,6 +30,15 @@ namespace {
 App::App(int argc, char **argv)
     : QApplication(argc, argv), destructing(false)
 {
+    QFile f(":qdarkstyle/style.qss");
+    if (!f.exists()) {
+        Error("Unable to set stylesheet, file not found\n");
+    } else {
+        f.open(QFile::ReadOnly | QFile::Text);
+        QTextStream ts(&f);
+        setStyleSheet(ts.readAll());
+        Debug() << "Set Style to: QDarkStyle";
+    }
     setApplicationName(APPNAME);
     setApplicationVersion(VERSION_STR);
     setApplicationDisplayName(APPNAME_FULL);

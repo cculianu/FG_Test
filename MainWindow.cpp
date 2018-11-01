@@ -11,7 +11,11 @@ MainWindow::MainWindow(QWidget *parent) :
     setWindowIcon(QIcon(":/Img/app_icon.png"));
     using Util::Connect; using Util::app;
     Connect(ui->actionDebug_Console, SIGNAL(triggered()), app(), SLOT(showRaiseDebugWin()));
+#ifdef Q_OS_WIN
+    setWindowTitle("Main Window");
+#else
     setWindowTitle(qApp->applicationDisplayName() + " - Main Window");
+#endif
 }
 
 MainWindow::~MainWindow()

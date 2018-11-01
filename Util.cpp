@@ -16,12 +16,14 @@
 #include <math.h>
 #include <atomic>
 #include <QCryptographicHash>
+#include <QStandardPaths>
 #ifdef Q_OS_DARWIN
 #  include <sys/types.h>
 #  include <sys/sysctl.h>
 #  include <mach/mach_time.h>
 #  include <CoreServices/CoreServices.h>
 #endif
+
 
 namespace Util
 {
@@ -233,16 +235,16 @@ namespace Util
         QWidget *parent = nullptr;
         // Mac, Windows support folder or file.
 #if defined(Q_OS_WIN)
-        const QString explorer = Environment::systemEnvironment().searchInPath(QLatin1String("explorer.exe"));
+        const QString explorer = QStandardPaths::findExecutable("explorer");
         if (explorer.isEmpty()) {
             QMessageBox::warning(parent,
-                                 tr("Launching Windows Explorer failed"),
-                                 tr("Could not find explorer.exe in path to launch Windows Explorer."));
+                                 QApplication::tr("Launching Windows Explorer failed"),
+                                 QApplication::tr("Could not find explorer.exe in path to launch Windows Explorer."));
             return;
         }
         QString param;
         if (!QFileInfo(pathIn).isDir())
-            param = QLatin1String("/select,");
+            param = "/select,";
         param += QDir::toNativeSeparators(pathIn);
         QString command = explorer + " " + param;
         QProcess::startDetached(command);

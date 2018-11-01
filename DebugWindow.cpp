@@ -14,7 +14,7 @@
 #include "Settings.h"
 
 DebugWindow::DebugWindow(QWidget *parent) :
-    QMainWindow(parent, Qt::Dialog|Qt::MSWindowsFixedSizeDialogHint),
+    QMainWindow(parent, Qt::Dialog/*|Qt::MSWindowsFixedSizeDialogHint*/),
     ui(new Ui::DebugWindow)
 {
     using Util::Connect;
@@ -25,7 +25,11 @@ DebugWindow::DebugWindow(QWidget *parent) :
     Connect(ui->verboseChk, SIGNAL(toggled(bool)), app(), SLOT(setVerboseDebugMode(bool)));
     Connect(ui->clearBut, SIGNAL(clicked(bool)), this, SLOT(clearLog()));
 
+#ifdef Q_OS_WIN
+    setWindowTitle("Debug Console");
+#else
     setWindowTitle(QString(APPNAME) + " - Debug Console");
+#endif
     setWindowIcon(QIcon(":/Img/app_icon.png"));
     ui->tb->setFontPointSize(8.0);
 }

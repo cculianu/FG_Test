@@ -11,7 +11,11 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>MainWindow</string>
+   <string>Main Window</string>
+  </property>
+  <property name="windowIcon">
+   <iconset>
+    <normaloff>Img/app_icon.png</normaloff>Img/app_icon.png</iconset>
   </property>
   <widget class="QWidget" name="centralWidget"/>
   <widget class="QMenuBar" name="menuBar">
@@ -20,7 +24,7 @@
      <x>0</x>
      <y>0</y>
      <width>400</width>
-     <height>22</height>
+     <height>18</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuWindow">
@@ -30,14 +34,6 @@
     <addaction name="actionDebug_Console"/>
    </widget>
    <addaction name="menuWindow"/>
-  </widget>
-  <widget class="QToolBar" name="mainToolBar">
-   <attribute name="toolBarArea">
-    <enum>TopToolBarArea</enum>
-   </attribute>
-   <attribute name="toolBarBreak">
-    <bool>false</bool>
-   </attribute>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
   <action name="actionDebug_Console">

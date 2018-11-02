@@ -61,6 +61,8 @@ macx {
 win32 {
     # Add windows-specific stuff here
     QMAKE_CXXFLAGS += /std:c++17
+    CONFIG += windows
+    LIBS += opengl32.lib
 }
 
 # Default rules for deployment.

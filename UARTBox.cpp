@@ -6,6 +6,8 @@
 #include <QtSerialPort>
 #include <QVector>
 #include <map>
+#include <QLineEdit>
+#include <QMutexLocker>
 
 namespace  {
     const QVector<QString> flowControlStrings = {
@@ -25,17 +27,27 @@ namespace  {
     };
 }
 
+
 UARTBox::UARTBox(QWidget *parent) :
     QWidget(parent),
-    ui(new Ui::UARTBox)
+    ui(new Ui::UARTBox), wrk(nullptr)
 {
     ui->setupUi(this);
     setupComboBoxes();
+
+    connect(ui->le, &QLineEdit::returnPressed, [this]{
+        QString line = ui->le->text().trimmed() + "\n"; //TODO: figure out if we need the \n?
+        ui->tb->insertPlainText(line);
+        ui->le->clear();
+        emit sendLine(line);
+    });
+    wrk = new Worker(this);
 }
 
 UARTBox::~UARTBox()
 {
     delete ui; ui = nullptr;
+    delete wrk; wrk = nullptr;
 }
 
 void UARTBox::setupComboBoxes()
@@ -89,22 +101,117 @@ void UARTBox::setupComboBoxes()
     using Util::Connect;
     const QVector<QComboBox *> cbs = { ui->portCb, ui->baudCb, ui->bpsCb, ui->flowCb };
     for (auto & cb : cbs)
-        Connect(cb, SIGNAL(currentIndexChanged(int)), this, SLOT(comboBoxesChanged()));
+        Connect(cb, SIGNAL(currentIndexChanged(int)), this, SLOT(comboBoxesChanged()));    
 }
 
 void UARTBox::comboBoxesChanged()
 {
     Settings & settings(Util::settings());
+    mut.lock();
     settings.uart.baud = ui->baudCb->currentData().toInt();
     settings.uart.bpsEncoded = ui->bpsCb->currentData().toInt();
     settings.uart.flowControl = ui->flowCb->currentData().toInt();
     settings.uart.portName = ui->portCb->currentText();
     settings.save(Settings::UART);
+    mut.unlock();
+    emit portSettingsChanged();
 }
 
-QString UARTBox::port() const { return Util::settings().uart.portName; }
-QSerialPort::BaudRate UARTBox::baud() const { return QSerialPort::BaudRate(Util::settings().uart.baud); }
-QSerialPort::FlowControl UARTBox::flowControl() const { return QSerialPort::FlowControl(Util::settings().uart.flowControl); }
-QSerialPort::DataBits UARTBox::bits() const { return QSerialPort::DataBits((Util::settings().uart.bpsEncoded>>16)&0xff); }
-QSerialPort::Parity UARTBox::parity() const { return QSerialPort::Parity((Util::settings().uart.bpsEncoded>>8)&0xff); }
-QSerialPort::StopBits UARTBox::stopBits() const { return QSerialPort::StopBits(Util::settings().uart.bpsEncoded&0xff); }
+void UARTBox::gotCharacters(QString chars)
+{
+    ui->tb->insertPlainText(chars);
+    Debug() << "UART Recv: " << chars;
+}
+
+QString UARTBox::port() const { QMutexLocker ml(&mut); return Util::settings().uart.portName; }
+QSerialPort::BaudRate UARTBox::baud() const { QMutexLocker ml(&mut); return QSerialPort::BaudRate(Util::settings().uart.baud); }
+QSerialPort::FlowControl UARTBox::flowControl() const { QMutexLocker ml(&mut); return QSerialPort::FlowControl(Util::settings().uart.flowControl); }
+QSerialPort::DataBits UARTBox::bits() const { QMutexLocker ml(&mut); return QSerialPort::DataBits((Util::settings().uart.bpsEncoded>>16)&0xff); }
+QSerialPort::Parity UARTBox::parity() const { QMutexLocker ml(&mut); return QSerialPort::Parity((Util::settings().uart.bpsEncoded>>8)&0xff); }
+QSerialPort::StopBits UARTBox::stopBits() const { QMutexLocker ml(&mut); return QSerialPort::StopBits(Util::settings().uart.bpsEncoded&0xff); }
+
+
+/* --- UARTBox::Worker --- */
+UARTBox::Worker::Worker(UARTBox *ub)
+    : QObject(nullptr), ub(ub), sp(nullptr)
+{
+    moveToThread(&thr);
+    thr.setObjectName("UART Worker");
+    thr.start();
+
+    connect(this, SIGNAL(gotCharacters(QString)), ub, SLOT(gotCharacters(QString)));
+    connect(ub, &UARTBox::portSettingsChanged, this, &Worker::applyNewPortSettings);
+    connect(ub, SIGNAL(sendLine(QString)), this, SLOT(sendLine(QString)));
+    QTimer::singleShot(300, this, &Worker::applyNewPortSettings);
+}
+
+UARTBox::Worker::~Worker() {
+    thr.quit();
+    thr.wait();
+    delete sp; sp = nullptr;
+}
+
+void UARTBox::Worker::applyNewPortSettings()
+{
+    if (sp) { delete sp; sp = nullptr; }
+    QSerialPortInfo info(ub->port());
+    const auto baud = ub->baud();
+    const auto flowControl = ub->flowControl();
+    const auto bits = ub->bits();
+    const auto parity = ub->parity();
+    const auto stopBits = ub->stopBits();
+    Debug() << "Applying new port settings:" << info.portName() << " (Manuf: " << info.manufacturer() << ")" << " (Desc: " << info.description() << ") "
+            << "/ baud,flow,bits,partity,stopBits = "
+            << baud << "," << flowControl << "," << bits << "," << parity << "," << stopBits
+            << "...";
+    sp = new QSerialPort(info, this);
+    sp->setBaudRate(baud);
+    sp->setDataBits(bits);
+    sp->setFlowControl(flowControl);
+    sp->setParity(parity);
+    sp->setStopBits(stopBits);
+    if (!sp->open(QIODevice::ReadWrite)) {
+        const auto error = sp->error();
+        Error() << "Could not open port, code: " << error;
+        emit gotCharacters("PORT ERROR\n");
+    } else {
+        // no error
+        connect(sp, SIGNAL(readyRead()), this, SLOT(onReadyRead()));
+    }
+}
+
+void UARTBox::Worker::onReadyRead()
+{
+    if (!sp) return;
+    QByteArray b = sp->readAll();
+    if (!b.isEmpty()) {
+        Debug() << "Received: " << QString(b).trimmed();
+        emit gotCharacters(QString(b));
+    } else {
+        Error() << "Empty read!";
+    }
+    if (sp->error() != QSerialPort::NoError) {
+        Error() << "Read error: " << sp->error();
+    }
+}
+
+void UARTBox::Worker::sendLine(QString line)
+{
+    if (!sp) return;
+    QByteArray b(line.toUtf8());
+    if (b.isEmpty()) return;
+    const auto n = sp->write(b);
+    if (n != b.length()) {
+        Error() << "Write returned " << n << ", expected " << b.length();
+    } else {
+        Debug() << "Sending: " << QString(b).trimmed();
+        if (!sp->waitForBytesWritten(1000)) {
+            Error() << "waitForBytesWritten timeout";
+        } else {
+            Debug() << "waitForBytesWritten ok";
+        }
+    }
+    if (sp->error() != QSerialPort::NoError) {
+        Error() << "Write error: " << sp->error();
+    }
+}

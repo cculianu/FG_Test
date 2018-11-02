@@ -3,6 +3,8 @@
 
 #include <QWidget>
 #include <QSerialPort>
+#include <QMutex>
+#include <QThread>
 
 namespace Ui {
     class UARTBox;
@@ -30,12 +32,49 @@ public:
     QSerialPort::Parity parity() const;           ///< the current parity setting
     QSerialPort::StopBits stopBits() const;       ///< the current stop bits setting
 
+signals:
+    void portSettingsChanged();
+    void sendLine(QString line);
+
+public slots:
+    void gotCharacters(QString chars);
+
 private slots:
     void comboBoxesChanged();
 
 private:
     Ui::UARTBox *ui;
     void setupComboBoxes();
+
+    class Worker;
+    Worker *wrk;
+    mutable QMutex mut;
 };
+
+class UARTBox::Worker : public QObject {
+    Q_OBJECT
+public:
+    explicit Worker(UARTBox *uartBox /* must be non-null */);
+    ~Worker() override;
+
+    void start();
+
+signals:
+    void gotCharacters(QString chars);
+
+public slots:
+    void sendLine(QString line);
+
+private slots:
+    void onReadyRead();
+
+private:
+    void applyNewPortSettings();
+
+    UARTBox *ub;
+    QSerialPort *sp;
+    QThread thr;
+};
+
 
 #endif // UARTBOX_H

@@ -427,7 +427,12 @@ Log::~Log()
     if (doprt) {
         s.flush(); // does nothing probably..
         QString dateStr = QString("[") + QDateTime::currentDateTime().toString("yyyy.MM.dd hh:mm:ss.zzz") + QString("] ");
-        QString theString = dateStr + str;
+        QString thrdStr = "";
+        QThread *th = QThread::currentThread();
+        if (th && th != qApp->thread() && !th->objectName().isEmpty())
+            thrdStr = QString::asprintf("<Thread: %s> ", th->objectName().toUtf8().constData());
+
+        QString theString = dateStr + thrdStr + str;
 
         if (app()) {
             app()->logLine(theString, color);

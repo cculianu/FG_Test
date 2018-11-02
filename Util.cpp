@@ -22,7 +22,7 @@
 #  include <sys/sysctl.h>
 #  include <mach/mach_time.h>
 #elif defined(Q_OS_WIN)
-#  include <windows.h>
+#  include <Windows.h>
 #else
 #  include <thread>
 #endif

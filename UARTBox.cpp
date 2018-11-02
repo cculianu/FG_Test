@@ -121,7 +121,7 @@ void UARTBox::comboBoxesChanged()
 void UARTBox::gotCharacters(QString chars)
 {
     ui->tb->insertPlainText(chars);
-    Debug() << "UART Recv: " << chars;
+    Debug() << "UART Recv: " << chars.trimmed();
 }
 
 QString UARTBox::port() const { QMutexLocker ml(&mut); return Util::settings().uart.portName; }
@@ -147,11 +147,19 @@ UARTBox::Worker::Worker(UARTBox *ub)
 }
 
 UARTBox::Worker::~Worker() {
-    thr.quit();
-    thr.wait();
-    delete sp; sp = nullptr;
+    // not sure if below is kosher. idea is to allow us to delete sub-objects, etc by moving us back to the main thread
+    // we can only call moveToThread in our thread, so we do this hack. This d'tor waits until we are moved, then it proceeds.
+    if (thr.isRunning()) {
+        QSemaphore sem;
+        QTimer::singleShot(1, this, [&]{moveToThread(nullptr); sem.release();});
+        sem.acquire();
+        thr.quit();
+        thr.wait();
+        delete sp; sp = nullptr;
+    } else {
+        qWarning("Failed to move UARTBox::Worker back to the main thread -- could not delete nested objects!!\n");
+    }
 }
-
 void UARTBox::Worker::applyNewPortSettings()
 {
     if (sp) { delete sp; sp = nullptr; }

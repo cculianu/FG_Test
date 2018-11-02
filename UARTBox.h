@@ -23,12 +23,12 @@ public:
     explicit UARTBox(QWidget *parent = nullptr);
     ~UARTBox() override;
 
-    QString port() const; ///< the current port setting selected in the GUI
-    QSerialPort::BaudRate baud() const; ///< the current baud setting selected in the GUI
-    QSerialPort::FlowControl flowControl() const; ///< the current flow control setting selected in the GUI
-    QSerialPort::DataBits bits() const; ///< the current bits setting selected in the GUI
-    QSerialPort::Parity parity() const; ///< the current parity setting selected in the GUI
-    QSerialPort::StopBits stopBits() const; ///< the current stop bits setting selected in the GUI
+    QString port() const;                         ///< the current port setting
+    QSerialPort::BaudRate baud() const;           ///< the current baud setting
+    QSerialPort::FlowControl flowControl() const; ///< the current flow control setting
+    QSerialPort::DataBits bits() const;           ///< the current bits setting
+    QSerialPort::Parity parity() const;           ///< the current parity setting
+    QSerialPort::StopBits stopBits() const;       ///< the current stop bits setting
 
 private slots:
     void comboBoxesChanged();

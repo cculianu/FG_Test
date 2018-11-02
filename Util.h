@@ -1,20 +1,16 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <QByteArray>
-#include <QImage>
 #include <QTextStream>
 #include <QString>
-#include <QStringList>
-#include <QRect>
-#include <QRegExp>
-#include "App.h"
 #include <atomic>
 #include <QMutex>
 #include <QMutexLocker>
-#include <QSet>
 #include <QPixmap>
 #include <functional>
+
+struct Settings;
+class App;
 
 namespace Util {
 
@@ -25,7 +21,11 @@ namespace Util {
     /// safely connect objects using enqueued messages, printing errors and aborting app if connection fails
     void Connect(QObject *srco, const QString & src, QObject *desto, const QString & dest);
 
+    /// returns the App instance (QApplication subclass)
     App *app();
+
+    /// returns the app-global settings object
+    Settings &settings();
 
     /// misc platform-specific fixups called at app startup.
     void osSpecificFixups();
@@ -34,7 +34,7 @@ namespace Util {
     QString getUserDirectory();
 
     /// returns the number of physical (real) processors on the system
-    unsigned getNProcessors();
+    unsigned getNPhysicalProcessors();
 
     /// returns the number of virtual processors on the system
     unsigned getNVirtualProcessors();

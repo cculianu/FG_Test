@@ -17,13 +17,17 @@
 #include <atomic>
 #include <QCryptographicHash>
 #include <QStandardPaths>
-#ifdef Q_OS_DARWIN
+#if defined(Q_OS_DARWIN)
 #  include <sys/types.h>
 #  include <sys/sysctl.h>
 #  include <mach/mach_time.h>
-#  include <CoreServices/CoreServices.h>
+#elif defined(Q_OS_WIN)
+#  include <windows.h>
+#else
+#  include <thread>
 #endif
 
+#include "App.h"
 
 namespace Util
 {
@@ -97,29 +101,46 @@ namespace Util
     {
         static unsigned nVProcs = 0;
         if (!nVProcs) {
-            nVProcs = unsigned(MPProcessorsScheduled()); // this returns virtual CPUs which isn't what we want..
+            int a = 0;
+            size_t b = sizeof(a);
+            if (0 == sysctlbyname("hw.ncpu",&a, &b, nullptr, 0)) {
+                nVProcs = unsigned(a); // this returns virtual CPUs which isn't what we want..
+            }
         }
-        return nVProcs;
+        return nVProcs ? nVProcs : 1;
     }
 
-    unsigned getNProcessors()
+    unsigned getNPhysicalProcessors()
     {
         static unsigned nProcs = 0;
         if (!nProcs) {
-            nProcs = unsigned(MPProcessorsScheduled()); // this returns virtual CPUs which isn't what we want..
-            int a=0;
-            size_t b=sizeof(a);
-            if (0==sysctlbyname("hw.physicalcpu",&a,&b,nullptr,0)) {
+            int a = 0;
+            size_t b = sizeof(a);
+            if (0 == sysctlbyname("hw.physicalcpu",&a,&b,nullptr,0)) {
                 nProcs = unsigned(a);
             }
             //Debug() << "nProcs = " << nProcs;//  << " a:" << a << "  b:" << b;
         }
-        return nProcs;
+        return nProcs ? nProcs : 1;
     }
 #else
-    unsigned getNProcessors() { return 4; } // not supported on this platform yet...
+#  ifdef Q_OS_WIN
+    unsigned getNPhysicalProcessors() {
+        static unsigned nProcs = 0;
+        if (!nProcs) {
+            SYSTEM_INFO sysinfo;
+            GetSystemInfo(&sysinfo);
+            nProcs = unsigned(sysinfo.dwNumberOfProcessors);
+        }
+        return nProcs ? nProcs : 1;
+    }
+#  else
+    unsigned getNPhysicalProcessors() { return 4; } // not supported on this platform yet...
+#  endif
 
-    unsigned getNVirtualProcessors() { return 4; } // not supported on this platform yet...
+    unsigned getNVirtualProcessors() {
+        return std::thread::hardware_concurrency();
+    }
 
     void osSpecificFixups() {}
 
@@ -378,6 +399,7 @@ namespace Util
         return QString::fromLatin1(h.result().toHex());
     }
 
+    Settings &settings() { return app()->settings; }
 
 } // end namespace Util
 

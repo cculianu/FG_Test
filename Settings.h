@@ -58,7 +58,7 @@ struct Settings
     };
 
     void load(int scope = All); ///< load from QSettings object
-    void save(int scope = All); ///< save to QSettings object
+    void save(int scope = All); ///< save to QSettings object    
 };
 
 #endif // SETTINGS_H

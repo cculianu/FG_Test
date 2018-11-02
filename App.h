@@ -5,8 +5,8 @@
 #include <QColor>
 #include <QList>
 #include <QPair>
-#include "Settings.h"
 #include <atomic>
+#include "Settings.h"
 
 class DebugWindow;
 class QSystemTrayIcon;

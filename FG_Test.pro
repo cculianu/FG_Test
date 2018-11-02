@@ -30,7 +30,8 @@ SOURCES += \
     MainWindow.cpp \
     Util.cpp \
     Settings.cpp \
-    DebugWindow.cpp
+    DebugWindow.cpp \
+    UARTBox.cpp
 
 HEADERS += \
     App.h \
@@ -38,18 +39,25 @@ HEADERS += \
     Util.h \
     Settings.h \
     Version.h \
-    DebugWindow.h
+    DebugWindow.h \
+    UARTBox.h
 
 FORMS += \
     MainWindow.ui \
-    DebugWindow.ui
+    DebugWindow.ui \
+    UARTBox.ui
 
 RESOURCES += \
     Resources.qrc \
     qdarkstyle/style.qrc
 
 macx {
-    LIBS += -framework CoreServices
+    # Add mac-specific libs, etc, here
+    #LIBS += -framework CoreServices
+}
+
+win32 {
+    # Add windows-specific stuff here
 }
 
 # Default rules for deployment.

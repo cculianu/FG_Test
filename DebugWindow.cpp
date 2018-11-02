@@ -12,6 +12,7 @@
 #include <QSettings>
 #include <QTextBrowser>
 #include "Settings.h"
+#include "App.h"
 
 DebugWindow::DebugWindow(QWidget *parent) :
     QMainWindow(parent, Qt::Dialog/*|Qt::MSWindowsFixedSizeDialogHint*/),

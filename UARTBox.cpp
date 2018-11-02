@@ -147,8 +147,10 @@ UARTBox::Worker::Worker(UARTBox *ub)
 }
 
 UARTBox::Worker::~Worker() {
-    // not sure if below is kosher. idea is to allow us to delete sub-objects, etc by moving us back to the main thread
-    // we can only call moveToThread in our thread, so we do this hack. This d'tor waits until we are moved, then it proceeds.
+    /* The below is an "elegant hack". The idea is to allow us to delete sub-objects, etc by moving us back to the main
+       thread (QObjects can only be deleted in the thread they belong to). So, we can only call moveToThread in the
+       target thread, and wait for it to complete. Thus, this d'tor waits until we are moved, then it proceeds with
+       deleting sub-objects.  */
     if (thr.isRunning()) {
         QSemaphore sem;
         QTimer::singleShot(1, this, [&]{moveToThread(nullptr); sem.release();});

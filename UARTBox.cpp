@@ -194,8 +194,7 @@ void UARTBox::Worker::applyNewPortSettings()
 void UARTBox::Worker::onReadyRead()
 {
     if (!sp) return;
-    QByteArray b = sp->readAll();
-    if (!b.isEmpty()) {
+    if (QByteArray b = sp->readAll(); !b.isEmpty()) {
         Debug() << "Received: " << QString(b).trimmed();
         emit gotCharacters(QString(b));
     } else {
@@ -216,8 +215,8 @@ void UARTBox::Worker::sendLine(QString line)
     }
     QByteArray b(line.toUtf8());
     if (b.isEmpty()) return;
-    const auto n = sp->write(b);
-    if (n != b.length()) {
+
+    if (const auto n = sp->write(b); n != b.length()) {
         Error() << "Write returned " << n << ", expected " << b.length();
     } else {
         Debug() << "Sending: " << QString(b).trimmed();

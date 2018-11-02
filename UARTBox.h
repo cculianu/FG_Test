@@ -51,9 +51,11 @@ private:
     mutable QMutex mut;
 };
 
+/* Helper class. Not meant to be constructed outside of UARTBox */
 class UARTBox::Worker : public QObject {
     Q_OBJECT
-public:
+    friend class UARTBox; ///< only UARTBox should be using us
+protected:
     explicit Worker(UARTBox *uartBox /* must be non-null */);
     ~Worker() override;
 
@@ -62,7 +64,7 @@ public:
 signals:
     void gotCharacters(QString chars);
 
-public slots:
+protected slots:
     void sendLine(QString line);
 
 private slots:

@@ -101,3 +101,10 @@ void UARTBox::comboBoxesChanged()
     settings.uart.portName = ui->portCb->currentText();
     settings.save(Settings::UART);
 }
+
+QString UARTBox::port() const { return Util::settings().uart.portName; }
+QSerialPort::BaudRate UARTBox::baud() const { return QSerialPort::BaudRate(Util::settings().uart.baud); }
+QSerialPort::FlowControl UARTBox::flowControl() const { return QSerialPort::FlowControl(Util::settings().uart.flowControl); }
+QSerialPort::DataBits UARTBox::bits() const { return QSerialPort::DataBits((Util::settings().uart.bpsEncoded>>16)&0xff); }
+QSerialPort::Parity UARTBox::parity() const { return QSerialPort::Parity((Util::settings().uart.bpsEncoded>>8)&0xff); }
+QSerialPort::StopBits UARTBox::stopBits() const { return QSerialPort::StopBits(Util::settings().uart.bpsEncoded&0xff); }

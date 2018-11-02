@@ -76,10 +76,10 @@ void UARTBox::setupComboBoxes()
     // bpsCb
     ui->bpsCb->clear();
     for (int dataBits = 8; dataBits >= 5; --dataBits) {
-        for (const auto & pars : parityStrings) {
-            for (const auto & stp : stopBitStrings) {
-                const int encoded = ((dataBits&0xff)<<16) | ((pars.first&0xff)<<8) | (stp.first&0xff);
-                const QString item (QString::number(dataBits) + "/" + pars.second + "/" + stp.second);
+        for (const auto & [p_val, p_str] : parityStrings) {
+            for (const auto & [s_val, s_str] : stopBitStrings) {
+                const int encoded = ((dataBits&0xff)<<16) | ((p_val&0xff)<<8) | (s_val&0xff);
+                const QString item (QString::number(dataBits) + "/" + p_str + "/" + s_str);
                 ui->bpsCb->addItem(item, encoded);
                 if (encoded == settings.uart.bpsEncoded)
                     ui->bpsCb->setCurrentIndex(ui->bpsCb->count()-1);

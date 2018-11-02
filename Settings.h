@@ -23,6 +23,15 @@ struct Settings
     QString saveDir, savePrefix;
     Fmt format;
 
+    struct UART {
+        QString portName;
+        int baud;
+        int bpsEncoded; // 4-byte value: [ 00, BITS, PARITY, STOP ] (All are QSerialPort enum vals, encoded in a DWORD)
+        int flowControl; // QSerialPort::FlowControl value
+    };
+
+    UART uart;
+
     struct TransientNeverSavedAlwaysFromUI
     {
         void reset() { *this = TransientNeverSavedAlwaysFromUI(); }
@@ -53,8 +62,9 @@ struct Settings
     enum Scope {
         Main = 1, // everything at top-level except for stuff under .transient
         Other = 2, // everything in struct Other (.other),
-        Appearance = 4, // evrything in struct Appearance
-        All = Main|Other|Appearance
+        Appearance = 4, // everything in struct Appearance
+        UART = 8, // everything in struct UART
+        All = Main|Other|Appearance|UART
     };
 
     void load(int scope = All); ///< load from QSettings object

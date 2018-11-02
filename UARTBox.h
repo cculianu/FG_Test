@@ -15,8 +15,12 @@ public:
     explicit UARTBox(QWidget *parent = nullptr);
     ~UARTBox() override;
 
+private slots:
+    void comboBoxesChanged();
+
 private:
     Ui::UARTBox *ui;
+    void setupComboBoxes();
 };
 
 #endif // UARTBOX_H

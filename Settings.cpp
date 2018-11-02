@@ -51,6 +51,13 @@ void Settings::load(int scope)
         saveDir = s.value("saveDir", QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)).toString();
         savePrefix = s.value("savePrefix", "Recording").toString();
     }
+    if (scope & UART) {
+        // uart related
+        uart.portName = s.value("uart_portName", "xx").toString();
+        uart.baud = s.value("uart_baud", 115200).toInt();
+        uart.flowControl = s.value("uart_flowControl", 0).toInt();
+        uart.bpsEncoded = s.value("uart_bpsEncoded", int((8&0xff)<<16)|((0&0xff)<<8)|(1&0xff)).toInt();
+    }
     if (scope & Other) {
         other.verbosity = s.value("verbosity", 2).toInt();
     }
@@ -67,6 +74,12 @@ void Settings::save(int scope)
         s.setValue("format", fmt2String(format));
         s.setValue("saveDir", saveDir);
         s.setValue("savePrefix", savePrefix);
+    }
+    if (scope & UART) {
+        s.setValue("uart_portName", uart.portName);
+        s.setValue("uart_baud", uart.baud);
+        s.setValue("uart_flowControl", uart.flowControl);
+        s.setValue("uart_bpsEncoded", uart.bpsEncoded);
     }
     if (scope & Other) {
         s.setValue("verbosity", other.verbosity);

@@ -38,6 +38,7 @@ UARTBox::UARTBox(QWidget *parent) :
     connect(ui->le, &QLineEdit::returnPressed, [this]{
         QString line = ui->le->text().trimmed() + "\n"; //TODO: figure out if we need the \n?
         ui->tb->insertPlainText(line);
+        ui->tb->ensureCursorVisible();
         ui->le->clear();
         emit sendLine(line);
     });
@@ -198,6 +199,11 @@ void UARTBox::Worker::onReadyRead()
 void UARTBox::Worker::sendLine(QString line)
 {
     if (!sp) return;
+    if (!sp->isOpen()) {
+        Error() << "Port not open";
+        emit gotCharacters("PORT ERROR\n");
+        return;
+    }
     QByteArray b(line.toUtf8());
     if (b.isEmpty()) return;
     const auto n = sp->write(b);

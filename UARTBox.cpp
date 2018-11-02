@@ -121,7 +121,15 @@ void UARTBox::comboBoxesChanged()
 void UARTBox::gotCharacters(QString chars)
 {
     ui->tb->insertPlainText(chars);
-    Debug() << "UART Recv: " << chars.trimmed();
+    ui->tb->ensureCursorVisible();
+    //Debug() << "UART Recv: '" << chars << "'";
+}
+
+void UARTBox::portError(QString err)
+{
+    ui->tb->insertHtml(QString("<font color=#ff6464><b>") + "PORT ERROR " + "</b></font>" + err.trimmed());
+    ui->tb->insertPlainText("\n");
+    ui->tb->ensureCursorVisible();
 }
 
 QString UARTBox::port() const { QMutexLocker ml(&mut); return Util::settings().uart.portName; }
@@ -143,6 +151,7 @@ UARTBox::Worker::Worker(UARTBox *ub)
     connect(this, SIGNAL(gotCharacters(QString)), ub, SLOT(gotCharacters(QString)));
     connect(ub, &UARTBox::portSettingsChanged, this, &Worker::applyNewPortSettings);
     connect(ub, SIGNAL(sendLine(QString)), this, SLOT(sendLine(QString)));
+    connect(this, SIGNAL(portError(QString)), ub, SLOT(portError(QString)));
     QTimer::singleShot(300, this, &Worker::applyNewPortSettings);
 }
 
@@ -184,7 +193,7 @@ void UARTBox::Worker::applyNewPortSettings()
     if (!sp->open(QIODevice::ReadWrite)) {
         const auto error = sp->error();
         Error() << "Could not open port, code: " << error;
-        emit gotCharacters("PORT ERROR\n");
+        emit portError(QString("Could not open port: ") + sp->errorString());
     } else {
         // no error
         connect(sp, SIGNAL(readyRead()), this, SLOT(onReadyRead()));
@@ -195,7 +204,7 @@ void UARTBox::Worker::onReadyRead()
 {
     if (!sp) return;
     if (QByteArray b = sp->readAll(); !b.isEmpty()) {
-        Debug() << "Received: " << QString(b).trimmed();
+        Debug() << "Received: '" << QString(b) << "'";
         emit gotCharacters(QString(b));
     } else {
         Error() << "Empty read!";
@@ -210,7 +219,7 @@ void UARTBox::Worker::sendLine(QString line)
     if (!sp) return;
     if (!sp->isOpen()) {
         Error() << "Port not open";
-        emit gotCharacters("PORT ERROR\n");
+        emit portError("Port not open");
         return;
     }
     QByteArray b(line.toUtf8());
@@ -219,14 +228,16 @@ void UARTBox::Worker::sendLine(QString line)
     if (const auto n = sp->write(b); n != b.length()) {
         Error() << "Write returned " << n << ", expected " << b.length();
     } else {
-        Debug() << "Sending: " << QString(b).trimmed();
+        Debug() << "Sending: '" << QString(b) << "'";
         if (!sp->waitForBytesWritten(1000)) {
             Error() << "waitForBytesWritten timeout";
+            //emit portError("Write timeout");
         } else {
             Debug() << "waitForBytesWritten ok";
         }
     }
     if (sp->error() != QSerialPort::NoError) {
-        Error() << "Write error: " << sp->error();
+        Error() << "Write error: " << sp->error() << ", " << sp->errorString();
+        emit portError(sp->errorString());
     }
 }

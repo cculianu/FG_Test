@@ -36,11 +36,10 @@ signals:
     void portSettingsChanged();
     void sendLine(QString line);
 
-public slots:
-    void gotCharacters(QString chars);
-
 private slots:
     void comboBoxesChanged();
+    void gotCharacters(QString chars);
+    void portError(QString err);
 
 private:
     Ui::UARTBox *ui;
@@ -63,6 +62,7 @@ protected:
 
 signals:
     void gotCharacters(QString chars);
+    void portError(QString errorString);
 
 protected slots:
     void sendLine(QString line);

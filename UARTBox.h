@@ -4,7 +4,7 @@
 #include <QWidget>
 #include <QSerialPort>
 #include <QMutex>
-#include <QThread>
+#include "WorkerThread.h"
 
 namespace Ui {
     class UARTBox;
@@ -51,14 +51,12 @@ private:
 };
 
 /* Helper class. Not meant to be constructed outside of UARTBox */
-class UARTBox::Worker : public QObject {
+class UARTBox::Worker : public WorkerThread {
     Q_OBJECT
     friend class UARTBox; ///< only UARTBox should be using us
 protected:
     explicit Worker(UARTBox *uartBox /* must be non-null */);
     ~Worker() override;
-
-    void start();
 
 signals:
     void gotCharacters(QString chars);
@@ -75,7 +73,6 @@ private:
 
     UARTBox *ub;
     QSerialPort *sp;
-    QThread thr;
 };
 
 

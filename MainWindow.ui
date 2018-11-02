@@ -35,7 +35,7 @@
      <number>3</number>
     </property>
     <item row="0" column="0">
-     <widget class="QOpenGLWidget" name="openGLWidget"/>
+     <widget class="GLVideoWidget" name="videoWidget"/>
     </item>
     <item row="1" column="0">
      <widget class="UARTBox" name="uartBox" native="true">
@@ -98,6 +98,11 @@
    <extends>QWidget</extends>
    <header>UARTBox.h</header>
    <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>GLVideoWidget</class>
+   <extends>QOpenGLWidget</extends>
+   <header>GLVideoWidget.h</header>
   </customwidget>
  </customwidgets>
  <resources/>

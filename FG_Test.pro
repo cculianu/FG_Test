@@ -4,9 +4,7 @@
 #
 #-------------------------------------------------
 
-QT       += core gui serialport
-
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+QT       += core gui serialport widgets
 
 TARGET = FG_Test
 TEMPLATE = app
@@ -31,7 +29,9 @@ SOURCES += \
     Util.cpp \
     Settings.cpp \
     DebugWindow.cpp \
-    UARTBox.cpp
+    UARTBox.cpp \
+    GLVideoWidget.cpp \
+    WorkerThread.cpp
 
 HEADERS += \
     App.h \
@@ -40,7 +40,9 @@ HEADERS += \
     Settings.h \
     Version.h \
     DebugWindow.h \
-    UARTBox.h
+    UARTBox.h \
+    GLVideoWidget.h \
+    WorkerThread.h
 
 FORMS += \
     MainWindow.ui \

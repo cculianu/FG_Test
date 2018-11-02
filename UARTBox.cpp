@@ -47,8 +47,8 @@ UARTBox::UARTBox(QWidget *parent) :
 
 UARTBox::~UARTBox()
 {
-    delete ui; ui = nullptr;
     delete wrk; wrk = nullptr;
+    delete ui; ui = nullptr;
 }
 
 void UARTBox::setupComboBoxes()
@@ -142,11 +142,9 @@ QSerialPort::StopBits UARTBox::stopBits() const { QMutexLocker ml(&mut); return 
 
 /* --- UARTBox::Worker --- */
 UARTBox::Worker::Worker(UARTBox *ub)
-    : QObject(nullptr), ub(ub), sp(nullptr)
+    : WorkerThread(), ub(ub), sp(nullptr)
 {
-    moveToThread(&thr);
     thr.setObjectName("UART Worker");
-    thr.start();
 
     connect(this, SIGNAL(gotCharacters(QString)), ub, SLOT(gotCharacters(QString)));
     connect(ub, &UARTBox::portSettingsChanged, this, &Worker::applyNewPortSettings);
@@ -156,21 +154,10 @@ UARTBox::Worker::Worker(UARTBox *ub)
 }
 
 UARTBox::Worker::~Worker() {
-    /* The below is an "elegant hack". The idea is to allow us to delete sub-objects, etc by moving us back to the main
-       thread (QObjects can only be deleted in the thread they belong to). So, we can only call moveToThread in the
-       target thread, and wait for it to complete. Thus, this d'tor waits until we are moved, then it proceeds with
-       deleting sub-objects.  */
-    if (thr.isRunning()) {
-        QSemaphore sem;
-        QTimer::singleShot(1, this, [&]{moveToThread(nullptr); sem.release();});
-        sem.acquire();
-        thr.quit();
-        thr.wait();
-        delete sp; sp = nullptr;
-    } else {
-        qWarning("Failed to move UARTBox::Worker back to the main thread -- could not delete nested objects!!\n");
-    }
+    stop(); /// need to explicitly call stop() in order to be able to delete 'sp' below.
+    delete sp; sp = nullptr;
 }
+
 void UARTBox::Worker::applyNewPortSettings()
 {
     if (sp) { delete sp; sp = nullptr; }

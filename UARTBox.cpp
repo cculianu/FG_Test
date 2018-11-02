@@ -1,9 +1,9 @@
 #include "UARTBox.h"
 #include "ui_UARTBox.h"
-#include <QSerialPortInfo>
-#include <QtSerialPort>
 #include "Util.h"
 #include "Settings.h"
+#include <QSerialPortInfo>
+#include <QtSerialPort>
 #include <QVector>
 #include <map>
 

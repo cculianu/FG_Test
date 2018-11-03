@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QMap>
 
 namespace Ui {
 class MainWindow;
@@ -21,6 +22,8 @@ protected:
     void closeEvent(QCloseEvent *) override;
 
 private:
+    QMap<QString, QAction *> tbActs;
+    void setupToolBar();
     Ui::MainWindow *ui;
     FakeFrameGenerator *fgen = nullptr;
 };

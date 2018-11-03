@@ -2,9 +2,12 @@
 #include "ui_MainWindow.h"
 #include "Util.h"
 #include "App.h"
+#include "FakeFrameGenerator.h"
 #include <QMessageBox>
 #include <QCloseEvent>
-#include "FakeFrameGenerator.h"
+#include <QToolBar>
+#include <QLabel>
+#include <QCheckBox>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -45,6 +48,8 @@ MainWindow::MainWindow(QWidget *parent) :
     a->setMenuRole(QAction::AboutRole);
     a = ui->menuWindow->addAction("About Qt", app(), SLOT(aboutQt()));
     a->setMenuRole(QAction::AboutQtRole);
+
+    setupToolBar();
 }
 
 MainWindow::~MainWindow()
@@ -61,4 +66,32 @@ void MainWindow::closeEvent(QCloseEvent *e) {
         return;
     }
     e->ignore();
+}
+
+void MainWindow::setupToolBar()
+{
+    static const auto b2s = [](bool b) -> QString {
+        return  (b ? "ON" : "OFF");
+    };
+    auto tb = ui->toolBar;
+    QAction *a;
+    tbActs["clock"] = a = tb->addAction("Clock OFF", this, [this](bool b){
+        Debug() << "Clock on/off: " <<  b2s(b);
+        tbActs["clock"]->setText(QString("Clock %1").arg(b2s(b)));
+    });
+    a->setCheckable(true);
+    tbActs["timing"] = a = tb->addAction("Timing OFF", this, [this](bool b){
+        Debug() << "Timing on/off: " <<  b2s(b);
+        tbActs["timing"]->setText(QString("Timing %1").arg(b2s(b)));
+    });
+    a->setCheckable(true);
+    tb->addSeparator();
+    tb->addWidget(new QLabel("Registers"));
+    for (int i = 32; i > 0; --i) {
+        QCheckBox *chk;
+        tbActs[QString("reg%1").arg(i)] = tb->addWidget(chk = new QCheckBox(QString::number(i)));
+        connect(chk, &QCheckBox::toggled, this, [=](bool b){
+            Debug() << "Checkbox " << chk->text() << " (" << i << ") toggled " << b2s(b);
+        });
+    }
 }

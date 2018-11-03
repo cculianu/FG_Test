@@ -12,7 +12,7 @@ class FakeFrameGenerator : public WorkerThread
 {
     Q_OBJECT
 public:
-    FakeFrameGenerator(int width = 5056, int height = 2968, double fps = 60.0, int nUniqueFrames = 20);
+    FakeFrameGenerator(int width = 5056, int height = 2968, double fps = 10.0, int nUniqueFrames = 20);
     ~FakeFrameGenerator();
 
 signals:

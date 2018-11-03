@@ -59,7 +59,8 @@ void FakeFrameGenerator::genFrame()
                                   ( (qMax(intensity-1, 0) & 0xf) << 0) // blue
                                 | ( (qMax(intensity-2, 0) & 0xf) << 4) // green
                                 | ( ( intensity & 0xf )          << 8) // red
-                                | (0x0<<12) ); // unused
+                                );
+                                //| (0xf<<12) ); // unused
                 }
 
             } else if (img.format() == QImage::Format_ARGB32) {
@@ -84,6 +85,7 @@ void FakeFrameGenerator::genFrame()
         if (which >= frames.size()) which = frames.size()-1;
         img2Send = frames[which];
     }
+
     emit generatedFrame(img2Send);
 
     ps->mark();

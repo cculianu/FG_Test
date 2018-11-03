@@ -23,14 +23,6 @@ MainWindow::MainWindow(QWidget *parent) :
     setWindowTitle(qApp->applicationDisplayName() + " - Main Window");
 #endif
 
-    // testing...
-    fgen = new FakeFrameGenerator();
-    Connect(fgen, SIGNAL(generatedFrame(QImage)), ui->videoWidget, SLOT(updateFrame(QImage)));
-    //connect(fgen, &FakeFrameGenerator::fps, this, [this](double fps) {
-    connect(ui->videoWidget, &GLVideoWidget::fps, this, [this](double fps) {
-        statusBar()->showMessage(QString("FPS %1").arg(fps));
-    });
-
     // mac-specific weirdness adds this stuff to the app-global menu.
     QAction *a = ui->menuWindow->addAction(
 #ifdef Q_OS_MAC
@@ -50,6 +42,14 @@ MainWindow::MainWindow(QWidget *parent) :
     a->setMenuRole(QAction::AboutQtRole);
 
     setupToolBar();
+
+    // testing...
+    fgen = new FakeFrameGenerator();
+    Util::Connect(fgen, SIGNAL(generatedFrame(QImage)), ui->videoWidget, SLOT(updateFrame(QImage)));
+    //connect(fgen, &FakeFrameGenerator::fps, this, [this](double fps) {
+    connect(ui->videoWidget, &GLVideoWidget::fps, this, [this](double fps) {
+        statusBar()->showMessage(QString("FPS %1").arg(fps));
+    });
 }
 
 MainWindow::~MainWindow()

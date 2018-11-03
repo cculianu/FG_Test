@@ -56,6 +56,7 @@ App::App(int argc, char **argv)
     if (QSystemTrayIcon::isSystemTrayAvailable()) {
         sysTray = new QSystemTrayIcon(QIcon(":/Img/tray_icon.png"), this);
         sysTray->setObjectName("System Tray Icon");
+        sysTray->setToolTip(APPNAME_FULL);
         sysTray->setContextMenu(trayMenu = new QMenu(nullptr));
         QAction *a;
         trayMenu->addSeparator();

@@ -34,7 +34,7 @@ public:
 
 signals:
     void portSettingsChanged();
-    void sendLine(QString line);
+    void sendCharacters(QString);
 
 private slots:
     void comboBoxesChanged();
@@ -63,7 +63,7 @@ signals:
     void portError(QString errorString);
 
 protected slots:
-    void sendLine(QString line);
+    void sendCharacters(QString);
 
 private slots:
     void onReadyRead();

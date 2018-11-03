@@ -40,7 +40,7 @@ UARTBox::UARTBox(QWidget *parent) :
         ui->tb->insertPlainText(line);
         ui->tb->ensureCursorVisible();
         ui->le->clear();
-        emit sendLine(line);
+        emit sendCharacters(line);
     });
     wrk = new Worker(this);
 }
@@ -148,7 +148,7 @@ UARTBox::Worker::Worker(UARTBox *ub)
 
     connect(this, SIGNAL(gotCharacters(QString)), ub, SLOT(gotCharacters(QString)));
     connect(ub, &UARTBox::portSettingsChanged, this, &Worker::applyNewPortSettings);
-    connect(ub, SIGNAL(sendLine(QString)), this, SLOT(sendLine(QString)));
+    connect(ub, SIGNAL(sendCharacters(QString)), this, SLOT(sendCharacters(QString)));
     connect(this, SIGNAL(portError(QString)), ub, SLOT(portError(QString)));
     QTimer::singleShot(300, this, &Worker::applyNewPortSettings);
 }
@@ -191,17 +191,19 @@ void UARTBox::Worker::onReadyRead()
 {
     if (!sp) return;
     if (QByteArray b = sp->readAll(); !b.isEmpty()) {
-        Debug() << "Received: '" << QString(b) << "'";
-        emit gotCharacters(QString(b));
+        QString s(b);
+        Debug() << "Received: '" << s << "'";
+        emit gotCharacters(s);
     } else {
         Error() << "Empty read!";
     }
     if (sp->error() != QSerialPort::NoError) {
         Error() << "Read error: " << sp->error();
+        emit portError(sp->errorString());
     }
 }
 
-void UARTBox::Worker::sendLine(QString line)
+void UARTBox::Worker::sendCharacters(QString s)
 {
     if (!sp) return;
     if (!sp->isOpen()) {
@@ -209,7 +211,7 @@ void UARTBox::Worker::sendLine(QString line)
         emit portError("Port not open");
         return;
     }
-    QByteArray b(line.toUtf8());
+    QByteArray b(s.toUtf8());
     if (b.isEmpty()) return;
 
     if (const auto n = sp->write(b); n != b.length()) {

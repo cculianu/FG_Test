@@ -192,6 +192,24 @@ public:
     double operator()() const { return Avg::operator()(); }
 };
 
+/// Useful for calculating FPS, etc...
+class PerSec : public QObject {
+    Q_OBJECT
+public:
+    explicit PerSec(QObject *parent = nullptr, unsigned numAvg = 20U) : QObject(parent), avg(numAvg) {}
+
+    double emitTimeoutSecs = 1.0;
+
+    void mark(); ///< record the current time. May emit perSec() periodically.
+
+signals:
+    void perSec(double);
+
+private:
+    double tLast = -1.0, tLastEmit = 0.0;
+    Avg avg;
+};
+
 #define qs2cstr(s) (s.toUtf8().constData())
 
 #endif // UTIL_H

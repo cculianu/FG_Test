@@ -2,8 +2,9 @@
 #include <QPainter>
 
 GLVideoWidget::GLVideoWidget(QWidget *parent)
-    : QOpenGLWidget(parent)
+    : QOpenGLWidget(parent), ps(this)
 {
+    connect(&ps, SIGNAL(perSec(double)), this, SIGNAL(fps(double)));
 }
 
 GLVideoWidget::~GLVideoWidget() {}
@@ -38,4 +39,5 @@ void GLVideoWidget::paintGL()
         p.setRenderHint(QPainter::SmoothPixmapTransform, true);
         p.drawImage(rect(), frame);
     }
+    ps.mark();
 }

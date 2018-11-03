@@ -4,9 +4,9 @@
 #include <QImage>
 #include <QVector>
 #include "WorkerThread.h"
-#include "Util.h"
 
 class QTimer;
+class PerSec;
 
 class FakeFrameGenerator : public WorkerThread
 {
@@ -26,10 +26,9 @@ private slots:
 
 private:
     int w, h;
-    QTimer *t;
+    QTimer *t = nullptr;
     QVector<QImage> frames;
-    double tLastFrame, tLastFpsStatus;
-    Avg fpsAvg;
+    PerSec *ps = nullptr;
 };
 
 #endif // FAKEFRAMEGENERATOR_H

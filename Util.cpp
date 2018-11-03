@@ -530,3 +530,17 @@ Systray::~Systray()
     str = ""; // clear it for superclass d'tor
 }
 
+
+void PerSec::mark()
+{
+    const double tNow = Util::getTimeSecs();
+    if (tLast >= 0.0) {
+        // compute per sec Avg
+        avg(1.0/(tNow-tLast));
+        if (tNow-tLastEmit >= emitTimeoutSecs) {
+            emit perSec(avg());
+            tLastEmit = tNow;
+        }
+    }
+    tLast = tNow;
+}

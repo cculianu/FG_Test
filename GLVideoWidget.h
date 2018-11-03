@@ -3,6 +3,7 @@
 
 #include <QOpenGLWidget>
 #include <QImage>
+#include "Util.h"
 
 class GLVideoWidget : public QOpenGLWidget
 {
@@ -12,6 +13,7 @@ public:
     ~GLVideoWidget() override;
 
 signals:
+    void fps(double);
 
 public slots:
     void updateFrame(QImage);
@@ -23,6 +25,7 @@ protected:
 
 private:
     QImage frame;
+    PerSec ps;
 };
 
 #endif // GLVIDEOWIDGET_H

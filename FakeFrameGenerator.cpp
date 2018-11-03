@@ -1,11 +1,11 @@
 #include "FakeFrameGenerator.h"
+#include "Util.h"
 #include <QTimer>
 #include <cstdlib>
 #include <QtGlobal>
 
 FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq)
-    : w(w_in), h(h_in), t(nullptr), tLastFrame(-1.0), tLastFpsStatus(0.0), fpsAvg(20U)
-
+    : w(w_in), h(h_in)
 {
     setObjectName("Fake Frame Generator");
     if (fps <= 0.0) fps = 1.0;
@@ -18,6 +18,10 @@ FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq
 
     postLambdaSync([this, fps] {
         // run in thread...
+
+        ps = new PerSec(this);
+        connect(ps, SIGNAL(perSec(double)), this, SIGNAL(fps(double)));
+
         t = new QTimer(this);
         t->setSingleShot(false);
         t->setInterval(int(1000.0/fps));
@@ -29,15 +33,13 @@ FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq
 FakeFrameGenerator::~FakeFrameGenerator()
 {
     postLambdaSync([this]{
-        if (t) delete t;
-        t = nullptr;
+        delete t; t = nullptr;
+        delete ps; ps = nullptr;
     });
 }
 
 void FakeFrameGenerator::genFrame()
 {
-    const double tNow = Util::getTimeSecs();
-
     QImage img2Send;
 
     if (frames.size() < frames.capacity()) {
@@ -84,14 +86,6 @@ void FakeFrameGenerator::genFrame()
     }
     emit generatedFrame(img2Send);
 
-    if (tLastFrame >= 0.0 && tNow > tLastFrame) {
-        // compute fpsAvg
-        fpsAvg(1.0/(tNow-tLastFrame));
-        if (tNow-tLastFpsStatus >= 1.0) {
-            emit fps(fpsAvg());
-            tLastFpsStatus = tNow;
-        }
-    }
-    tLastFrame = tNow;
+    ps->mark();
 }
 

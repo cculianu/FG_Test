@@ -21,6 +21,8 @@ public:
 
     Settings settings;
 
+    const bool darkMode; ///< set once at app startup. If true, we are using a dark style.
+
     void logLine(const QString & line, const QColor & color = QColor());
     void setSBString(const QString &text, int timeout_msecs=0);
     void sysTrayMsg(const QString & msg, int timeout_msecs=0, bool iserror=false);

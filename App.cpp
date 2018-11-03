@@ -1,6 +1,3 @@
-#include "App.h"
-#include "Util.h"
-#include "DebugWindow.h"
 #include <QEvent>
 #include <QFileOpenEvent>
 #include <QTimer>
@@ -11,6 +8,11 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QMessageBox>
+
+#include "App.h"
+#include "Util.h"
+#include "DebugWindow.h"
+#include "ui_Prefs.h"
 
 #include "Version.h"
 
@@ -29,9 +31,9 @@ namespace {
 }
 
 App::App(int argc, char **argv)
-    : QApplication(argc, argv)
+    : QApplication(argc, argv), darkMode(settings.appearance.useDarkStyle)
 {
-    if (settings.appearance.useDarkStyle) {
+    if (darkMode) {
         QFile f(":qdarkstyle/style.qss");
         if (!f.exists()) {
             Error("Unable to set stylesheet, file not found");
@@ -183,7 +185,24 @@ void App::sysTrayMsg(const QString & msg, int timeout_msecs, bool iserror)
 
 void App::showPrefs()
 {
-    Debug() << "Show prefs..";
+    QDialog d;
+    auto ui = new Ui::Preferences;
+    ui->setupUi(&d);
+#ifdef Q_OS_MAC
+    d.setWindowTitle("Preferences");
+#else
+    d.setWindowTitle("Settings");
+#endif
+
+    ui->darkModeChk->setChecked(settings.appearance.useDarkStyle);
+    connect(ui->darkModeChk, &QCheckBox::clicked, this, [this,&d](bool b) {
+        settings.appearance.useDarkStyle = b;
+        if (!!b != !!darkMode) {
+            QMessageBox::information(&d, "Restart Required", "This change will take effect the next time the app is restarted.");
+        }
+    });
+    d.exec();
+    settings.save();
 }
 
 void App::about()

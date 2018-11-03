@@ -49,7 +49,8 @@ HEADERS += \
 FORMS += \
     MainWindow.ui \
     DebugWindow.ui \
-    UARTBox.ui
+    UARTBox.ui \
+    Prefs.ui
 
 RESOURCES += \
     Resources.qrc \

@@ -190,5 +190,9 @@ void App::about()
 {
     QMessageBox::about(/*topLevelWidgets().length() ? topLevelWidgets()[0] :*/nullptr,
                        QString("About ") + applicationName(),
-                       QString("%1").arg(APPNAME_FULL));
+                       QString("%1\n\n%2\n%3")
+                       .arg(APPNAME_FULL)
+                       .arg("© 2018 Calin Culianu")
+                       .arg("License: GPL v3")
+                       );
 }

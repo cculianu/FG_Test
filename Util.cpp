@@ -178,7 +178,7 @@ namespace Util
 
     void Connect(QObject *srco, const QString & src, QObject *desto, const QString & dest)
     {
-        if (!QObject::connect(srco, src.toUtf8(), desto, dest.toUtf8(), Qt::QueuedConnection)) {
+        if (!QObject::connect(srco, src.toUtf8(), desto, dest.toUtf8())) {
             QString tmp;
             QString msg = QString("Error connecting %1::%2 to %3::%4").arg( (tmp = srco->objectName()).isNull() ? "(unnamed)" : tmp ).arg(src.mid(1)).arg( (tmp = desto->objectName()).isNull() ? "(unnamed)" : tmp ).arg(dest.mid(1));
             if (QThread::currentThread() == qApp->thread())

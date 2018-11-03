@@ -27,6 +27,23 @@ MainWindow::MainWindow(QWidget *parent) :
     connect(ui->videoWidget, &GLVideoWidget::fps, this, [this](double fps) {
         statusBar()->showMessage(QString("FPS %1").arg(fps));
     });
+
+#ifndef Q_OS_MAC
+    ui->menuWindow->addSeparator();
+#endif
+    // mac-specific weirdness adds this stuff to the app-global menu.
+    QAction *a = ui->menuWindow->addAction(
+#ifdef Q_OS_MAC
+                "Preferences..."
+#else
+                "Settings..."
+#endif
+                , app(), SLOT(showPrefs()));
+    a->setMenuRole(QAction::PreferencesRole);
+    a = ui->menuWindow->addAction(QString("About ")+app()->applicationName(), app(), SLOT(about()));
+    a->setMenuRole(QAction::AboutRole);
+    a = ui->menuWindow->addAction("About Qt", app(), SLOT(aboutQt()));
+    a->setMenuRole(QAction::AboutQtRole);
 }
 
 MainWindow::~MainWindow()

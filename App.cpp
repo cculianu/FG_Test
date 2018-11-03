@@ -10,6 +10,7 @@
 #include <QMessageBox>
 #include <QSystemTrayIcon>
 #include <QMenu>
+#include <QMessageBox>
 
 #include "Version.h"
 
@@ -60,7 +61,18 @@ App::App(int argc, char **argv)
         a->setDisabled(true);
 
         trayMenu->addSeparator();
-        trayMenu->addAction("Quit",[this]{ this->quit(); });
+
+        a = trayMenu->addAction(
+#ifdef Q_OS_MAC
+                    "Preferences"
+#else
+                    "Settings"
+#endif
+                    , this, SLOT(showPrefs()));
+
+        a = new QAction("Quit", this);
+        connect(a, &QAction::triggered, this, [this]{ this->quit();});
+        trayMenu->addAction(a);
 
 
         sysTray->show();
@@ -167,4 +179,16 @@ void App::sysTrayMsg(const QString & msg, int timeout_msecs, bool iserror)
         if (iserror) Error() << msg;
         else Log() << msg;
     }
+}
+
+void App::showPrefs()
+{
+    Debug() << "Show prefs..";
+}
+
+void App::about()
+{
+    QMessageBox::about(/*topLevelWidgets().length() ? topLevelWidgets()[0] :*/nullptr,
+                       QString("About ") + applicationName(),
+                       QString("%1").arg(APPNAME_FULL));
 }

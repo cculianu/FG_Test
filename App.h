@@ -30,6 +30,8 @@ public:
 public slots:
     void setVerboseDebugMode(bool b) { settings.other.verbosity = b ? 2 : 0;  settings.save(); }
     void showRaiseDebugWin();
+    void showPrefs();
+    void about();
 
 protected:
     bool event(QEvent *) override;

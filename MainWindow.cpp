@@ -23,6 +23,9 @@ MainWindow::MainWindow(QWidget *parent) :
     // testing...
     fgen = new FakeFrameGenerator();
     Connect(fgen, SIGNAL(generatedFrame(QImage)), ui->videoWidget, SLOT(updateFrame(QImage)));
+    connect(fgen, &FakeFrameGenerator::fps, this, [this](double fps) {
+        statusBar()->showMessage(QString("FPS %1").arg(fps));
+    });
 }
 
 MainWindow::~MainWindow()

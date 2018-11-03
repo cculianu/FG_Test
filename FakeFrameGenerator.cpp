@@ -1,10 +1,11 @@
 #include "FakeFrameGenerator.h"
 #include <QTimer>
 #include <cstdlib>
-#include "Util.h"
+#include <QtGlobal>
 
 FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq)
-    : w(w_in), h(h_in), t(nullptr), lastTime(-1.0)
+    : w(w_in), h(h_in), t(nullptr), tLastFrame(-1.0), tLastFpsStatus(0.0), fpsAvg(20U)
+
 {
     setObjectName("Fake Frame Generator");
     if (fps <= 0.0) fps = 1.0;
@@ -36,6 +37,7 @@ FakeFrameGenerator::~FakeFrameGenerator()
 void FakeFrameGenerator::genFrame()
 {
     const double tNow = Util::getTimeSecs();
+
     QImage img2Send;
 
     if (frames.size() < frames.capacity()) {
@@ -82,11 +84,14 @@ void FakeFrameGenerator::genFrame()
     }
     emit generatedFrame(img2Send);
 
-    /*if (lastTime > 0.0) {
-        double _fps = 1.0/(tNow-lastTime);
-        emit fps(_fps);
-        Debug() << "FPS=" << _fps;
-    }*/
-    lastTime = tNow;
+    if (tLastFrame >= 0.0 && tNow > tLastFrame) {
+        // compute fpsAvg
+        fpsAvg(1.0/(tNow-tLastFrame));
+        if (tNow-tLastFpsStatus >= 1.0) {
+            emit fps(fpsAvg());
+            tLastFpsStatus = tNow;
+        }
+    }
+    tLastFrame = tNow;
 }
 

@@ -1,9 +1,10 @@
 #ifndef FAKEFRAMEGENERATOR_H
 #define FAKEFRAMEGENERATOR_H
 
-#include "WorkerThread.h"
 #include <QImage>
 #include <QVector>
+#include "WorkerThread.h"
+#include "Util.h"
 
 class QTimer;
 
@@ -27,7 +28,8 @@ private:
     int w, h;
     QTimer *t;
     QVector<QImage> frames;
-    double lastTime;
+    double tLastFrame, tLastFpsStatus;
+    Avg fpsAvg;
 };
 
 #endif // FAKEFRAMEGENERATOR_H

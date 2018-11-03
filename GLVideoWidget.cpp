@@ -36,7 +36,7 @@ void GLVideoWidget::paintGL()
         glClear(GL_COLOR_BUFFER_BIT);
     } else {
         QPainter p(this);
-        p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p.setRenderHint(QPainter::SmoothPixmapTransform, /*set to false for now.. true*/false);
         p.drawImage(rect(), frame);
     }
     ps.mark();

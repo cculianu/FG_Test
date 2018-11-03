@@ -142,7 +142,7 @@ QSerialPort::StopBits UARTBox::stopBits() const { QMutexLocker ml(&mut); return 
 
 /* --- UARTBox::Worker --- */
 UARTBox::Worker::Worker(UARTBox *ub)
-    : WorkerThread(), ub(ub), sp(nullptr)
+    : ub(ub), sp(nullptr)
 {
     thr.setObjectName("UART Worker");
 

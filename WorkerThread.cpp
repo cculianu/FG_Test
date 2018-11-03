@@ -1,6 +1,9 @@
 #include "WorkerThread.h"
 #include <QSemaphore>
 #include <QTimer>
+#include <QEvent>
+#include <QApplication>
+#include <utility>
 
 WorkerThread::WorkerThread()
     : QObject(nullptr)
@@ -30,12 +33,54 @@ bool WorkerThread::stop()
                Thus, this waits until we are moved, then it proceeds.
                Calling d'tors should explicitly call stop() before deleting any objects they created in their threads
                and which are owned by this object. */
-            QSemaphore sem;
-            QTimer::singleShot(1, this, [&]{moveToThread(nullptr); sem.release();});
-            sem.acquire();
+            postLambdaSync([this]{ moveToThread(nullptr); });
             thr.quit();
             thr.wait();
         }
     }
     return false;
+}
+
+struct LambdaEvent : QEvent {
+    static const QEvent::Type typ = QEvent::Type(QEvent::User + 201);
+
+    std::function<void(void)> lambda;
+
+    LambdaEvent(const std::function<void(void)> & f) : QEvent(typ), lambda(f) {}
+    LambdaEvent(std::function<void(void)> && f) : QEvent(typ), lambda(std::move(f)) {}
+    ~LambdaEvent() override;
+};
+
+LambdaEvent::~LambdaEvent() {}
+
+/// these can be called from any thread
+void WorkerThread::postLambda(const std::function<void(void)> & lambda)
+{
+    QApplication::postEvent(this, new LambdaEvent(lambda));
+}
+void WorkerThread::postLambda(std::function<void(void)> && lambda)
+{
+    QApplication::postEvent(this, new LambdaEvent(lambda));
+}
+void WorkerThread::postLambdaSync(const std::function<void(void)> & lambda)
+{
+    QSemaphore sem;
+    postLambda([lambda,&sem]{
+        lambda();
+        sem.release();
+    });
+    sem.acquire();
+}
+// this is called in the thread
+void WorkerThread::customEvent(QEvent *e)
+{
+    if (e->type() == LambdaEvent::typ) {
+        LambdaEvent *le = dynamic_cast<LambdaEvent *>(e);
+        if (le) {
+            le->lambda(); // call the function!
+            e->accept();
+            return;
+        }
+    }
+    QObject::customEvent(e);
 }

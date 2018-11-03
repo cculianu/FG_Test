@@ -7,6 +7,8 @@ namespace Ui {
 class MainWindow;
 }
 
+class FakeFrameGenerator;
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -20,6 +22,7 @@ protected:
 
 private:
     Ui::MainWindow *ui;
+    FakeFrameGenerator *fgen;
 };
 
 #endif // MAINWINDOW_H

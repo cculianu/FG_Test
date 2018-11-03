@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QThread>
+#include <functional>
 
 // Qt Event-Based Worker.  Process events in another thread.
 // Subclasses can inherit from this class and postEvents and send signals/slots and they will be processed
@@ -23,11 +24,18 @@ public:
     /// sequence involves the destruction of child QObjects!
     virtual bool stop();
 
+    /// Executes lambda by posting it as an event to the WorkerThread's event queue. Returns immediately.
+    void postLambda(const std::function<void(void)> & lambda);
+    void postLambda(std::function<void(void)> && lambda);
+    /// Synchronous (blocking) version of the above. Waits for lambda() to be called then returns.
+    void postLambdaSync(const std::function<void(void)> & lambda);
 signals:
 
 public slots:
 
 protected:
+    void customEvent(QEvent *) override;
+
     QThread thr;
 };
 

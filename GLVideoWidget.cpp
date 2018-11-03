@@ -25,7 +25,7 @@ void GLVideoWidget::resizeGL(int w, int h)
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
     glViewport(0, 0, w, h);
-    glOrtho( 0., 1., -1., 1., -1., 1.);
+    glOrtho( 0., GLdouble(w), 0, GLdouble(h), -1., 1.);
 }
 
 void GLVideoWidget::paintGL()

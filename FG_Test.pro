@@ -31,7 +31,8 @@ SOURCES += \
     DebugWindow.cpp \
     UARTBox.cpp \
     GLVideoWidget.cpp \
-    WorkerThread.cpp
+    WorkerThread.cpp \
+    FakeFrameGenerator.cpp
 
 HEADERS += \
     App.h \
@@ -42,7 +43,8 @@ HEADERS += \
     DebugWindow.h \
     UARTBox.h \
     GLVideoWidget.h \
-    WorkerThread.h
+    WorkerThread.h \
+    FakeFrameGenerator.h
 
 FORMS += \
     MainWindow.ui \

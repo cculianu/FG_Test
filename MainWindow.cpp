@@ -4,10 +4,11 @@
 #include "App.h"
 #include <QMessageBox>
 #include <QCloseEvent>
+#include "FakeFrameGenerator.h"
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
-    ui(new Ui::MainWindow)
+    ui(new Ui::MainWindow), fgen(nullptr)
 {
     ui->setupUi(this);
     setWindowIcon(QIcon(":/Img/app_icon.png"));
@@ -18,11 +19,16 @@ MainWindow::MainWindow(QWidget *parent) :
 #else
     setWindowTitle(qApp->applicationDisplayName() + " - Main Window");
 #endif
+
+    // testing...
+    fgen = new FakeFrameGenerator();
+    Connect(fgen, SIGNAL(generatedFrame(QImage)), ui->videoWidget, SLOT(updateFrame(QImage)));
 }
 
 MainWindow::~MainWindow()
 {
-    delete ui;
+    delete fgen; fgen = nullptr;
+    delete ui; ui = nullptr;
 }
 
 void MainWindow::closeEvent(QCloseEvent *e) {

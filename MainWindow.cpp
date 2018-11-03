@@ -28,17 +28,18 @@ MainWindow::MainWindow(QWidget *parent) :
         statusBar()->showMessage(QString("FPS %1").arg(fps));
     });
 
-#ifndef Q_OS_MAC
-    ui->menuWindow->addSeparator();
-#endif
     // mac-specific weirdness adds this stuff to the app-global menu.
     QAction *a = ui->menuWindow->addAction(
 #ifdef Q_OS_MAC
                 "Preferences..."
 #else
-                "Settings..."
+                "&Settings"
 #endif
                 , app(), SLOT(showPrefs()));
+#ifndef Q_OS_MAC
+    a->setShortcut(QKeySequence(Qt::CTRL+Qt::Key_Comma));
+    ui->menuWindow->addSeparator();
+#endif
     a->setMenuRole(QAction::PreferencesRole);
     a = ui->menuWindow->addAction(QString("About ")+app()->applicationName(), app(), SLOT(about()));
     a->setMenuRole(QAction::AboutRole);

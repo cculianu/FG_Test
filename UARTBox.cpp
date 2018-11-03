@@ -36,7 +36,7 @@ UARTBox::UARTBox(QWidget *parent) :
     setupComboBoxes();
 
     connect(ui->le, &QLineEdit::returnPressed, [this]{
-        QString line = ui->le->text().trimmed() + "\n"; //TODO: figure out if we need the \n?
+        QString line = ui->le->text().trimmed() + "\r\n"; //TODO: figure out if we need the \r\n?
         ui->tb->insertPlainText(line);
         ui->tb->ensureCursorVisible();
         ui->le->clear();
@@ -214,6 +214,7 @@ void UARTBox::Worker::sendLine(QString line)
 
     if (const auto n = sp->write(b); n != b.length()) {
         Error() << "Write returned " << n << ", expected " << b.length();
+        emit portError("Short write");
     } else {
         Debug() << "Sending: '" << QString(b) << "'";
         if (!sp->waitForBytesWritten(1000)) {

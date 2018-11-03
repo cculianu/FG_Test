@@ -8,7 +8,7 @@
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
-    ui(new Ui::MainWindow), fgen(nullptr)
+    ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
     setWindowIcon(QIcon(":/Img/app_icon.png"));

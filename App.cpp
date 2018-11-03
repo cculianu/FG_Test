@@ -28,8 +28,7 @@ namespace {
 }
 
 App::App(int argc, char **argv)
-    : QApplication(argc, argv),
-      destructing(false), debugWin(nullptr), sysTray(nullptr), trayMenu(nullptr)
+    : QApplication(argc, argv)
 {
     if (settings.appearance.useDarkStyle) {
         QFile f(":qdarkstyle/style.qss");

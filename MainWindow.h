@@ -22,7 +22,7 @@ protected:
 
 private:
     Ui::MainWindow *ui;
-    FakeFrameGenerator *fgen;
+    FakeFrameGenerator *fgen = nullptr;
 };
 
 #endif // MAINWINDOW_H

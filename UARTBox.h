@@ -46,7 +46,7 @@ private:
     void setupComboBoxes();
 
     class Worker;
-    Worker *wrk;
+    Worker *wrk = nullptr;
     mutable QMutex mut;
 };
 
@@ -71,8 +71,8 @@ private slots:
 private:
     void applyNewPortSettings();
 
-    UARTBox *ub;
-    QSerialPort *sp;
+    UARTBox *ub = nullptr;
+    QSerialPort *sp = nullptr;
 };
 
 

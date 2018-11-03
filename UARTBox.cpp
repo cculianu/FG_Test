@@ -30,7 +30,7 @@ namespace  {
 
 UARTBox::UARTBox(QWidget *parent) :
     QWidget(parent),
-    ui(new Ui::UARTBox), wrk(nullptr)
+    ui(new Ui::UARTBox)
 {
     ui->setupUi(this);
     setupComboBoxes();
@@ -142,7 +142,7 @@ QSerialPort::StopBits UARTBox::stopBits() const { QMutexLocker ml(&mut); return 
 
 /* --- UARTBox::Worker --- */
 UARTBox::Worker::Worker(UARTBox *ub)
-    : ub(ub), sp(nullptr)
+    : ub(ub)
 {
     thr.setObjectName("UART Worker");
 

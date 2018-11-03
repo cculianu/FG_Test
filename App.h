@@ -38,10 +38,10 @@ private slots:
     void clearBacklog();
 
 private:
-    std::atomic_bool destructing;
-    DebugWindow *debugWin;
-    QSystemTrayIcon *sysTray;
-    QMenu *trayMenu;
+    std::atomic_bool destructing = false;
+    DebugWindow *debugWin = nullptr;
+    QSystemTrayIcon *sysTray = nullptr;
+    QMenu *trayMenu = nullptr;
     QList<QPair<QString, QColor> > backlog;
 };
 

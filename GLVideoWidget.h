@@ -5,6 +5,8 @@
 #include <QImage>
 #include "Util.h"
 
+class QOpenGLPaintDevice;
+
 class GLVideoWidget : public QOpenGLWidget
 {
     Q_OBJECT
@@ -26,6 +28,7 @@ protected:
 private:
     QImage frame;
     PerSec ps;
+    QOpenGLPaintDevice *pd = nullptr;
 };
 
 #endif // GLVIDEOWIDGET_H

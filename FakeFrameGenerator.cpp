@@ -3,15 +3,17 @@
 #include <cstdlib>
 #include "Util.h"
 
-FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps)
+FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq)
     : w(w_in), h(h_in), t(nullptr), lastTime(-1.0)
 {
     setObjectName("Fake Frame Generator");
     if (fps <= 0.0) fps = 1.0;
+    if (fps > 1000.0) fps = 1000.0;
     if (w <= 0) w = 1;
     if (h <= 0) h = 1;
+    if (nuniq <= 0) nuniq = 1;
 
-    frames.reserve(20);
+    frames.reserve(nuniq);
 
     postLambdaSync([this, fps] {
         // run in thread...

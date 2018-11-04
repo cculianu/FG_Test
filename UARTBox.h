@@ -3,8 +3,8 @@
 
 #include <QWidget>
 #include <QSerialPort>
-#include <QMutex>
-#include "WorkerThread.h"
+
+class SerialPortWorker;
 
 namespace Ui {
     class UARTBox;
@@ -33,7 +33,7 @@ public:
     QSerialPort::StopBits stopBits() const;       ///< the current stop bits setting
 
 signals:
-    void portSettingsChanged();
+    void portSettingsChanged(QString);
     void sendCharacters(QString);
 
 private slots:
@@ -45,35 +45,7 @@ private:
     Ui::UARTBox *ui;
     void setupComboBoxes();
 
-    class Worker;
-    Worker *wrk = nullptr;
-    mutable QMutex mut;
+    SerialPortWorker *wrk = nullptr;
 };
-
-/* Helper class. Not meant to be constructed outside of UARTBox */
-class UARTBox::Worker : public WorkerThread {
-    Q_OBJECT
-    friend class UARTBox; ///< only UARTBox should be using us
-protected:
-    explicit Worker(UARTBox *uartBox /* must be non-null */);
-    ~Worker() override;
-
-signals:
-    void gotCharacters(QString chars);
-    void portError(QString errorString);
-
-protected slots:
-    void sendCharacters(QString);
-
-private slots:
-    void onReadyRead();
-
-private:
-    void applyNewPortSettings();
-
-    UARTBox *ub = nullptr;
-    QSerialPort *sp = nullptr;
-};
-
 
 #endif // UARTBOX_H

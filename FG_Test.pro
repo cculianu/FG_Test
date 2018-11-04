@@ -32,7 +32,8 @@ SOURCES += \
     UARTBox.cpp \
     GLVideoWidget.cpp \
     WorkerThread.cpp \
-    FakeFrameGenerator.cpp
+    FakeFrameGenerator.cpp \
+    SerialPortWorker.cpp
 
 HEADERS += \
     App.h \
@@ -44,7 +45,8 @@ HEADERS += \
     UARTBox.h \
     GLVideoWidget.h \
     WorkerThread.h \
-    FakeFrameGenerator.h
+    FakeFrameGenerator.h \
+    SerialPortWorker.h
 
 FORMS += \
     MainWindow.ui \

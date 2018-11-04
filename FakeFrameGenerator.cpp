@@ -7,7 +7,7 @@
 FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq)
     : w(w_in), h(h_in)
 {
-    setObjectName("Fake Frame Generator");
+    thr.setObjectName("Fake Frame Generator");
     if (fps <= 0.0) fps = 1.0;
     if (fps > 1000.0) fps = 1000.0;
     if (w <= 0) w = 1;

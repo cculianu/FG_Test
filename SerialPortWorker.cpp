@@ -6,12 +6,15 @@
 #include <QByteArray>
 
 /* --- Port Settings --- */
+namespace {
+    const QString SEP(";");
+}
 QString SerialPortSettings::toString() const
 {
     QString ret;
     {
         QTextStream ts(&ret);
-        ts << port << ";;;" << baud << ";;;" << flowControl << ";;;" << bits << ";;;" << parity << ";;;" << stopBits;
+        ts << baud << SEP << flowControl << SEP << bits << SEP << parity << SEP << stopBits << SEP << port;
     }
     return ret;
 }
@@ -19,15 +22,15 @@ QString SerialPortSettings::toString() const
 bool SerialPortSettings::fromString(const QString &s)
 {
     bool ret = false;
-    QStringList sl = s.split(";;;");
-    if (sl.length() == 6) {
+    QStringList sl = s.split(SEP);
+    if (sl.length() >= 6) {
         bool ok;
-        port = sl[0];
-        baud = QSerialPort::BaudRate(sl[1].toInt(&ok));
-        if (ok) flowControl = QSerialPort::FlowControl(sl[2].toInt(&ok));
-        if (ok) bits = QSerialPort::DataBits(sl[3].toInt(&ok));
-        if (ok) parity = QSerialPort::Parity(sl[4].toInt(&ok));
-        if (ok) stopBits = QSerialPort::StopBits(sl[5].toInt(&ok));
+        port = sl.mid(5).join(SEP);
+        baud = QSerialPort::BaudRate(sl[0].toInt(&ok));
+        if (ok) flowControl = QSerialPort::FlowControl(sl[1].toInt(&ok));
+        if (ok) bits = QSerialPort::DataBits(sl[2].toInt(&ok));
+        if (ok) parity = QSerialPort::Parity(sl[3].toInt(&ok));
+        if (ok) stopBits = QSerialPort::StopBits(sl[4].toInt(&ok));
         if (!ok) port = QString();
         ret = ok;
     }

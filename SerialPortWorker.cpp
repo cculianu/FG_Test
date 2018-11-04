@@ -28,7 +28,7 @@ bool SerialPortSettings::fromString(const QString &s)
         if (ok) bits = QSerialPort::DataBits(sl[3].toInt(&ok));
         if (ok) parity = QSerialPort::Parity(sl[4].toInt(&ok));
         if (ok) stopBits = QSerialPort::StopBits(sl[5].toInt(&ok));
-        if (!ok) port = "";
+        if (!ok) port = QString();
         ret = ok;
     }
     return ret;

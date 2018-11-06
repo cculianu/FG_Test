@@ -12,7 +12,7 @@
 #include "App.h"
 #include "Util.h"
 #include "DebugWindow.h"
-#include "ui_Prefs.h"
+#include "Prefs.h"
 
 #include "Version.h"
 
@@ -186,23 +186,8 @@ void App::sysTrayMsg(const QString & msg, int timeout_msecs, bool iserror)
 
 void App::showPrefs()
 {
-    QDialog d;
-    auto ui = new Ui::Preferences;
-    ui->setupUi(&d);
-#ifdef Q_OS_MAC
-    d.setWindowTitle("Preferences");
-#else
-    d.setWindowTitle("Settings");
-#endif
-
-    ui->darkModeChk->setChecked(settings.appearance.useDarkStyle);
-    connect(ui->darkModeChk, &QCheckBox::clicked, this, [this,&d](bool b) {
-        settings.appearance.useDarkStyle = b;
-        if (!!b != !!darkMode) {
-            QMessageBox::information(&d, "Restart Required", "This change will take effect the next time the app is restarted.");
-        }
-    });
-    d.exec();
+    Prefs prefs(settings);
+    prefs.exec();
     settings.save();
 }
 

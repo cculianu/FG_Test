@@ -46,10 +46,23 @@ MainWindow::MainWindow(QWidget *parent) :
     // testing...
     fgen = new FakeFrameGenerator();
     Connect(fgen, SIGNAL(generatedFrame(QImage)), ui->videoWidget, SLOT(updateFrame(QImage)));
-    //connect(fgen, &FakeFrameGenerator::fps, this, [this](double fps) {
     connect(ui->videoWidget, &GLVideoWidget::fps, this, [this](double fps) {
-        statusBar()->showMessage(QString("FPS %1").arg(fps));
+        statusStrings[FPS1] = QString("%1 FPS (display)").arg(fps, 7, 'g', 3);
+        updateStatusMessage();
     });
+    connect(fgen, &FakeFrameGenerator::fps, this, [this](double fps) {
+        statusStrings[FPS2] = QString("%1 FPS (generate)").arg(fps, 7, 'g', 3);
+        updateStatusMessage();
+    });
+
+    ui->statusBar->setFont(QFont("Fixed"));
+}
+
+void MainWindow::updateStatusMessage()
+{
+    static const QString sep("  -  ");
+    const QString s = QStringList(statusStrings.toList()).join(sep).split(sep, QString::SkipEmptyParts).join(sep);
+    statusBar()->showMessage(s);
 }
 
 MainWindow::~MainWindow()
@@ -75,6 +88,14 @@ void MainWindow::setupToolBar()
     };
     auto tb = ui->toolBar;
     QAction *a;
+
+    tbActs["record"] = a = tb->addAction("Recording OFF", this, [this](bool b){
+        Debug() << "Recording on/off: " <<  b2s(b);
+        tbActs["record"]->setText(QString("Recording %1").arg(b2s(b)));
+    });
+    a->setCheckable(true);
+    tb->addSeparator();
+
     tbActs["clock"] = a = tb->addAction("Clock OFF", this, [this](bool b){
         Debug() << "Clock on/off: " <<  b2s(b);
         tbActs["clock"]->setText(QString("Clock %1").arg(b2s(b)));

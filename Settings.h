@@ -2,12 +2,15 @@
 #define SETTINGS_H
 
 #include <QString>
+#include <set>
 
 /// The settigs related to a Record/Screencapture session
 struct Settings
 {
     enum Fmt {
-        Fmt_Mpeg2=0, ///< .avi, yuv420p
+        Fmt_RAW = 0,
+        Fmt_PNG,
+        Fmt_Mpeg2, ///< .avi, yuv420p
         Fmt_Mpeg4, ///< .avi, yuv420p
         Fmt_H264, ///< .avi, yuv420p -- uses AVCaptureSession
         Fmt_ProRes4444, ///< .mov, Apple ProRes4444 -- uses AVCaptureSession
@@ -20,7 +23,10 @@ struct Settings
         Fmt_N
     };
 
+    static const std::set<Fmt> EnabledFormats; ///< only the formats in this set are currently supported by the app.
+
     QString saveDir, savePrefix;
+    bool zipEmbed;
     Fmt format;
 
     struct UART {

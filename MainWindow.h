@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QMap>
+#include <QVector>
 
 namespace Ui {
 class MainWindow;
@@ -21,11 +22,17 @@ public:
 protected:
     void closeEvent(QCloseEvent *) override;
 
+private slots:
+    void updateStatusMessage();
+
 private:
     QMap<QString, QAction *> tbActs;
     void setupToolBar();
     Ui::MainWindow *ui;
     FakeFrameGenerator *fgen = nullptr;
+
+    enum StatusString { FPS1 = 0, FPS2, Count, Dropped, Recording, Misc, NStatus };
+    QVector<QString> statusStrings = QVector<QString>(NStatus);
 };
 
 #endif // MAINWINDOW_H

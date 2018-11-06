@@ -12,14 +12,19 @@ Settings::~Settings()
 {
 }
 
+
 static const QString fmtStrings[] =
 {
-    "Mpeg2", "Mpeg4", "H.264", "ProRes4444", "ProRes422", "MJPEG", "FFV1", "LJPEG", "APNG",  "GIF", QString()
+    "RAW", "PNG", "Mpeg2", "Mpeg4", "H.264", "ProRes4444", "ProRes422", "MJPEG", "FFV1", "LJPEG", "APNG",  "GIF", QString()
 };
 
 static const QString fmtPrettyStrings[] =
 {
-    "Mpeg2", "Mpeg4", "H.264", "Apple ProRes4444", "Apple ProRes422", "MJPEG (Motion JPEG)", "FFV1 (lossless)", "LJPEG (lossless JPEG)", "APNG (lossless)", "GIF (animated)", QString()
+    "RAW", "PNG", "Mpeg2", "Mpeg4", "H.264", "Apple ProRes4444", "Apple ProRes422", "MJPEG (Motion JPEG)", "FFV1 (lossless)", "LJPEG (lossless JPEG)", "APNG (lossless)", "GIF (animated)", QString()
+};
+
+const std::set<Settings::Fmt> Settings::EnabledFormats = {
+    Fmt_RAW, Fmt_PNG, Fmt_MJPEG
 };
 
 
@@ -46,8 +51,9 @@ void Settings::load(int scope)
 //    Debug() << "Settings file: " << s.fileName();
 
     if (scope & Main) {
-        format = string2Fmt(s.value("format",fmt2String(Fmt_H264)).toString());
-        if (format == Fmt_N) format = Fmt_MJPEG;
+        format = string2Fmt(s.value("format",fmt2String(Fmt_RAW)).toString());
+        if (!EnabledFormats.count(format)) format = Fmt_RAW;
+        zipEmbed = s.value("zipEmber", true).toBool();
         saveDir = s.value("saveDir", QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)).toString();
         savePrefix = s.value("savePrefix", "Recording").toString();
     }
@@ -74,6 +80,7 @@ void Settings::save(int scope)
         s.setValue("format", fmt2String(format));
         s.setValue("saveDir", saveDir);
         s.setValue("savePrefix", savePrefix);
+        s.setValue("zipEmbed", zipEmbed);
     }
     if (scope & UART) {
         s.setValue("uart_portName", uart.portName);

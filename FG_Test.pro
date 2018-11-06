@@ -33,7 +33,8 @@ SOURCES += \
     GLVideoWidget.cpp \
     WorkerThread.cpp \
     FakeFrameGenerator.cpp \
-    SerialPortWorker.cpp
+    SerialPortWorker.cpp \
+    Prefs.cpp
 
 HEADERS += \
     App.h \
@@ -46,7 +47,8 @@ HEADERS += \
     GLVideoWidget.h \
     WorkerThread.h \
     FakeFrameGenerator.h \
-    SerialPortWorker.h
+    SerialPortWorker.h \
+    Prefs.h
 
 FORMS += \
     MainWindow.ui \

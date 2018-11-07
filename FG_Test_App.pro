@@ -84,7 +84,6 @@ win32 {
 }
 
 INCLUDEPATH += QuaZip
-message($$OUT_PWD)
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

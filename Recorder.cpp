@@ -1,20 +1,45 @@
 #include "Recorder.h"
 #include "Settings.h"
 #include "Util.h"
+#include "quazip/quazip.h"
+#include "quazip/quazipfile.h"
 #include <QDir>
 #include <QDateTime>
 #include <QThreadPool>
+#include <QByteArray>
+#include <QBuffer>
+#include <QMutex>
+#include <QMutexLocker>
 
 struct Recorder::Pvt
 {
-    Pvt(const QString &o, Settings::Fmt f) : outDir(o), format(f) {
-        int n = QThread::idealThreadCount();
+    Pvt(const QString &o, Settings::Fmt f) : dest(o), format(f) {
+        int n = QThread::idealThreadCount()-1;
         if (n < 1) n = 1;
         pool.setMaxThreadCount(n);
+        if (dest.endsWith(".zip")) {
+            isZip = true;
+            zip = new QuaZip(dest);
+            if (!zip->open(QuaZip::mdCreate)) {
+                Error() << "Error opening zip";
+                delete zip; zip = nullptr;
+                return;
+            }
+            zip->setZip64Enabled(true);
+            zipFile = new QuaZipFile(zip);
+        }
+    }
+    ~Pvt() {
+        if (zipFile) { if (zipFile->isOpen()) zipFile->close(); delete zipFile; zipFile = nullptr; }
+        if (zip) { if (zip->isOpen()) zip->close(); delete zip; zip = nullptr; }
     }
     QThreadPool pool;
-    QString outDir;
+    QString dest;
     const Settings::Fmt format;
+    bool isZip = false;
+    QuaZip *zip = nullptr;
+    QuaZipFile *zipFile = nullptr;
+    QMutex zipMut;
 };
 
 Recorder::Recorder(QObject *parent) : QObject(parent)
@@ -42,16 +67,17 @@ bool Recorder::isRecording() const { return !!p; }
 QString Recorder::start(const Settings &settings, QString *saveLocation)
 {
     if (isRecording()) return "Recording already running!";
-    if (settings.zipEmbed) return "ZIP Embed currently not supported!";
     QDir d(settings.saveDir);
     if (!d.exists()) return "Save directory invalid.";
 
     QString outDir = QString("%1%2")
             .arg(settings.savePrefix.isEmpty() ? "" : QString("%1_").arg(settings.savePrefix))
             .arg(QDateTime::currentDateTime().toString("yyMMdd_HHmmss"));
-    if (!d.mkdir(QString(outDir)))
-        return "Error creating output directory.";
-
+    if (settings.zipEmbed) outDir += ".zip";
+    else {
+        if (!d.mkdir(QString(outDir)))
+            return "Error creating output directory.";
+    }
     outDir = settings.saveDir + QDir::separator() + outDir;
     p = new Pvt(outDir, settings.format);
     if (saveLocation) *saveLocation = outDir;
@@ -64,7 +90,7 @@ void Recorder::saveFrame(const Frame &f_in)
 {
     if (!isRecording()) return;
     Frame f(f_in);
-    auto r = new LambdaRunnable([this, f] { saveFrame_InAThread_NoZip(f); });
+    auto r = new LambdaRunnable([this, f] { saveFrame_InAThread(f); });
     if (!p->pool.tryStart(r)) {
         delete r; r = nullptr;
         Warning() << "Frame " << f.num << " dropped";
@@ -72,7 +98,7 @@ void Recorder::saveFrame(const Frame &f_in)
     }
 }
 
-void Recorder::saveFrame_InAThread_NoZip(const Frame &f)
+void Recorder::saveFrame_InAThread(const Frame &f)
 {
     if (!p) {
         // defensive programming.  this check is not going to ever be true (unless we change this class around and forget to update this code).
@@ -83,22 +109,46 @@ void Recorder::saveFrame_InAThread_NoZip(const Frame &f)
     struct Err { QString err; };
 
     try {
+        if (p->isZip && (!p->zip || !p->zipFile))
+            throw Err{"Zip File could not be opened. Check the destination directory."};
         QString ext = Settings::fmt2String(p->format).toLower();
 
-        QFile out(p->outDir + QDir::separator() + QString("Frame_%1.%2").arg(f.num,6,10,QChar('0')).arg(ext));
-        if (!out.open(QFile::WriteOnly|QFile::NewOnly))
-            throw Err{out.errorString()};
+        QIODevice *out = nullptr;
+        QBuffer outbuf;
+        const QString fname = QString("Frame_%1.%2").arg(f.num,6,10,QChar('0')).arg(ext);
+        QFile outf(p->dest + QDir::separator() + fname);
+        if (p->isZip)
+            out = &outbuf;
+        else
+            out = &outf;
+        if (!out->open(QFile::WriteOnly|QFile::NewOnly))
+            throw Err{out->errorString()};
         if (p->format == Settings::Fmt_RAW) {
             qint64 len = f.img.bytesPerLine()*f.img.height();
-            if (qint64 res = out.write(reinterpret_cast<const char *>(f.img.constBits()), len); res < 0LL)
-                throw Err{out.errorString()};
+            if (qint64 res = out->write(reinterpret_cast<const char *>(f.img.constBits()), len); res < 0LL)
+                throw Err{out->errorString()};
             else if (res != len)
                 throw Err{"Short write"};
         } else if (p->format == Settings::Fmt_PNG || p->format == Settings::Fmt_JPG) {
-            if (!f.img.save(&out, ext.toUpper().toUtf8().constData()))
+            if (!f.img.save(out, ext.toUpper().toUtf8().constData()))
                 throw Err{QString("Error writing %1 image").arg(ext.toUpper())};
         } else
             throw Err{"Invalid format"};
+        if (p->isZip) {
+            QuaZipNewInfo inf(fname);
+            inf.setPermissions(QFile::Permissions(0x6666));
+            QMutexLocker ml(&p->zipMut); // only 1 thread at a time can modify the QuaZipFile object...
+            if (!p->zipFile->open(QuaZipFile::WriteOnly|QuaZipFile::NewOnly, inf, nullptr, 0, Z_DEFLATED, Z_NO_COMPRESSION)) {
+                throw Err{p->zipFile->errorString()};
+            }
+            if (qint64 len = p->zipFile->write(outbuf.buffer()); len != outbuf.buffer().length()) {
+                throw Err{p->zipFile->errorString()};
+            }
+            p->zipFile->close();
+            if (p->zipFile->getZipError() != Z_OK) {
+                throw Err{"Error on close within zip file"};
+            }
+        }
         emit wroteFrame(f.num);
     } catch (const Err & e) {
         emit error(e.err);

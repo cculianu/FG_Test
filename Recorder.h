@@ -30,7 +30,7 @@ public slots:
 
 
 private:
-    void saveFrame_InAThread_NoZip(const Frame &);
+    void saveFrame_InAThread(const Frame &);
 
     struct Pvt;
     Pvt *p = nullptr;

@@ -163,7 +163,7 @@ void MainWindow::setupToolBar()
             }
         } else if (!b && rec->isRecording()) {
             show_dlg("Please Wait...");
-            // this makes sure the dialog appears.. on Windows it doesn't show up in time.
+            // this makes sure the dialog appears.. on Windows it doesn't show up in time. So we call stop in 10ms giving the dialog time to appear.
             QTimer::singleShot(10, this, [this]{ rec->stop(); });
         }
         updateToolBar();

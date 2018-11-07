@@ -67,14 +67,24 @@ RESOURCES += \
 macx {
     # Add mac-specific libs, etc, here
     #LIBS += -framework CoreServices
+    LIBS += -L $$OUT_PWD/QuaZip/quazip -lquazip -lz
 }
 
 win32 {
     # Add windows-specific stuff here
     QMAKE_CXXFLAGS += /std:c++17
     CONFIG += windows
-    LIBS += opengl32.lib
+    LIBS += opengl32.lib $$PWD/QuaZip/winzlib/lib/zlib.lib
+    CONFIG(debug, debug|release) {
+        LIBS += $$OUT_PWD/QuaZip/quaip/debug/quazip.lib
+    }
+    CONFIG(release, debug|release) {
+        LIBS += $$OUT_PWD/QuaZip/quaip/release/quazip.lib
+    }
 }
+
+INCLUDEPATH += QuaZip
+message($$OUT_PWD)
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

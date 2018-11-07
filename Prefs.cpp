@@ -46,8 +46,7 @@ Prefs::Prefs(Settings &settings_in, QWidget *parent)
     ui->zipChk->setChecked(settings.zipEmbed);
     auto enableDisableZipChk = [this]() -> Settings::Fmt {
         auto fmt = Settings::Fmt(ui->formatCB->currentData().toInt());
-        static const std::set<Settings::Fmt> zipableFmts = { Settings::Fmt_RAW, Settings::Fmt_PNG };
-        ui->zipChk->setEnabled(zipableFmts.count(fmt));
+        ui->zipChk->setEnabled(Settings::ZipableFormats.count(fmt));
         return fmt;
     };
 
@@ -56,6 +55,9 @@ Prefs::Prefs(Settings &settings_in, QWidget *parent)
     connect(ui->formatCB, QOverload<int>::of(&QComboBox::activated), this, [=]{
         // set format from UI
         settings.format = enableDisableZipChk();
+    });
+    connect(ui->zipChk, &QCheckBox::clicked, this, [=](bool b){
+        settings.zipEmbed = b;
     });
 }
 

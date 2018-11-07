@@ -2,7 +2,7 @@
 #define GLVIDEOWIDGET_H
 
 #include <QOpenGLWidget>
-#include <QImage>
+#include "Frame.h"
 #include "Util.h"
 
 class QOpenGLPaintDevice;
@@ -16,9 +16,10 @@ public:
 
 signals:
     void fps(double);
+    void displayedFrame(quint64 num);
 
 public slots:
-    void updateFrame(QImage);
+    void updateFrame(const Frame &);
 
 protected:
     void initializeGL() override;
@@ -26,7 +27,7 @@ protected:
     void paintGL() override;
 
 private:
-    QImage frame;
+    Frame frame;
     PerSec ps;
     QOpenGLPaintDevice *pd = nullptr;
 };

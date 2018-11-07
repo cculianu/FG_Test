@@ -1,5 +1,5 @@
 #include "Util.h"
-#include <QScreen>
+#include "App.h"
 #include <QGuiApplication>
 #include <QPixmap>
 #include <QImage>
@@ -8,13 +8,9 @@
 #include <QDateTime>
 #include <QThread>
 #include <QMessageBox>
-#include <cstdlib>
-#include <iostream>
 #include <QProcess>
-#include <stdarg.h>
 #include <QDir>
-#include <math.h>
-#include <atomic>
+#include <QTimer>
 #include <QCryptographicHash>
 #include <QStandardPaths>
 #if defined(Q_OS_DARWIN)
@@ -26,8 +22,14 @@
 #else
 #  include <thread>
 #endif
+#include <cstdlib>
+#include <iostream>
+#include <utility>
+#include <math.h>
+#include <atomic>
+#include <stdarg.h>
 
-#include "App.h"
+
 
 namespace Util
 {
@@ -544,3 +546,34 @@ void PerSec::mark()
     }
     tLast = tNow;
 }
+
+Throttler::Throttler(VoidFunc &&f): func(std::move(f)) {}
+Throttler::Throttler(const VoidFunc &f): func(f) {}
+Throttler::~Throttler()
+{
+    if (t) { delete t; t = nullptr; }
+}
+void Throttler::operator()()
+{
+    if (t && t->isActive()) return;
+
+    if (const double tDiff = getTimeSecs() - tLast, period = 1.0/hz_; tDiff < period) {
+        if (!t) {
+            t = new QTimer;
+            QObject::connect(t, &QTimer::timeout, [this]{
+                t->stop();
+                func();
+                tLast = getTimeSecs();
+            });
+        }
+        t->start(int((period- tDiff)*1e3));
+    } else {
+        func();
+        tLast = getTimeSecs();
+    }
+}
+
+LambdaRunnable::LambdaRunnable(const VoidFunc &f) : func(f) {}
+LambdaRunnable::LambdaRunnable(VoidFunc &&f) : func(std::move(f)) {}
+LambdaRunnable::~LambdaRunnable() {}
+void LambdaRunnable::run() { func(); }

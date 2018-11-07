@@ -10,6 +10,7 @@ struct Settings
     enum Fmt {
         Fmt_RAW = 0,
         Fmt_PNG,
+        Fmt_JPG,
         Fmt_Mpeg2, ///< .avi, yuv420p
         Fmt_Mpeg4, ///< .avi, yuv420p
         Fmt_H264, ///< .avi, yuv420p -- uses AVCaptureSession
@@ -23,11 +24,13 @@ struct Settings
         Fmt_N
     };
 
-    static const std::set<Fmt> EnabledFormats; ///< only the formats in this set are currently supported by the app.
+    static const std::set<Fmt> EnabledFormats, ///< only the formats in this set are currently supported by the app.
+                               ZipableFormats; ///< 1 file-per-frame formats. foramt in this set may be "zipped" into a single file.
 
     QString saveDir, savePrefix;
     bool zipEmbed;
     Fmt format;
+    static const Fmt defaultFormat = Fmt_RAW;
 
     struct UART {
         QString portName;

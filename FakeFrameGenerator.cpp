@@ -86,7 +86,7 @@ void FakeFrameGenerator::genFrame()
         img2Send = frames[which];
     }
 
-    emit generatedFrame(img2Send);
+    emit generatedFrame({img2Send, ++frameNum});
 
     ps->mark();
 }

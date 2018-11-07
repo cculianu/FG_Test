@@ -3,14 +3,20 @@
 #include "Util.h"
 #include "App.h"
 #include "FakeFrameGenerator.h"
+#include "Recorder.h"
 #include <QMessageBox>
 #include <QCloseEvent>
 #include <QToolBar>
 #include <QLabel>
 #include <QCheckBox>
 
+namespace {
+    static QString b2s(bool b)  { return  (b ? "ON" : "OFF"); }
+}
+
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
+    updateStatusMessageThrottled([this]{updateStatusMessage();}),
     ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
@@ -45,15 +51,52 @@ MainWindow::MainWindow(QWidget *parent) :
 
     // testing...
     fgen = new FakeFrameGenerator();
-    Connect(fgen, SIGNAL(generatedFrame(QImage)), ui->videoWidget, SLOT(updateFrame(QImage)));
+    Connect(fgen, SIGNAL(generatedFrame(const Frame &)), ui->videoWidget, SLOT(updateFrame(const Frame &)));
     connect(ui->videoWidget, &GLVideoWidget::fps, this, [this](double fps) {
         statusStrings[FPS1] = QString("%1 FPS (display)").arg(fps, 7, 'g', 3);
-        updateStatusMessage();
+        updateStatusMessageThrottled();
     });
     connect(fgen, &FakeFrameGenerator::fps, this, [this](double fps) {
         statusStrings[FPS2] = QString("%1 FPS (generate)").arg(fps, 7, 'g', 3);
-        updateStatusMessage();
+        updateStatusMessageThrottled();
     });
+    connect(ui->videoWidget, &GLVideoWidget::displayedFrame, this, [this](quint64 frameNum) {
+        statusStrings[FrameNum] = QString("Frame %1").arg(frameNum);
+        updateStatusMessageThrottled();
+    });
+    rec = new Recorder(this);
+    connect(rec, &Recorder::wroteFrame, this, [this](quint64 frameNum){
+        if (!rec->isRecording()) return; // sometimes events continue to arrive after finishing recording. ignore them.
+        statusStrings[FrameNumRec] = QString("Fr.%1 (saved)").arg(frameNum);
+        updateStatusMessageThrottled();
+    });
+    connect(rec, &Recorder::stopped, this, [this](){
+        statusStrings[Recording] = "";
+        statusStrings[FrameNumRec] = "";
+        statusStrings[Dropped] = "";
+        tbActs["record"]->setChecked(false);
+        updateToolBar();
+        updateStatusMessageThrottled();
+    });
+    connect(rec, &Recorder::started, this, [this](QString fname) {
+        statusStrings[Recording] = QString("Saving to '%1'...").arg(fname);
+        tbActs["record"]->setChecked(true);
+        updateToolBar();
+        updateStatusMessageThrottled();
+    });
+    connect(rec, &Recorder::error, this, [this](QString error){
+        QMessageBox::critical(this, "Error", error);
+    });
+    connect(rec, &Recorder::frameDropped, this, [this](quint64 frame){
+        if (!rec->isRecording()) return; // sometimes events continue to arrive after finishing recording. ignore them.
+        Q_UNUSED(frame);
+        long n = 0;
+        if (QStringList sl = statusStrings[Dropped].split(" "); sl.length() > 1) {
+            n = sl.first().toLong();
+        }
+        statusStrings[Dropped] = QString("%1 Dropped").arg(++n);
+    });
+    connect(fgen, &FakeFrameGenerator::generatedFrame, rec, &Recorder::saveFrame);
 
     ui->statusBar->setFont(QFont("Fixed"));
 }
@@ -67,6 +110,7 @@ void MainWindow::updateStatusMessage()
 
 MainWindow::~MainWindow()
 {
+    delete rec; rec = nullptr;
     delete fgen; fgen = nullptr;
     delete ui; ui = nullptr;
 }
@@ -83,28 +127,24 @@ void MainWindow::closeEvent(QCloseEvent *e) {
 
 void MainWindow::setupToolBar()
 {
-    static const auto b2s = [](bool b) -> QString {
-        return  (b ? "ON" : "OFF");
-    };
     auto tb = ui->toolBar;
     QAction *a;
 
     tbActs["record"] = a = tb->addAction("Recording OFF", this, [this](bool b){
-        Debug() << "Recording on/off: " <<  b2s(b);
-        tbActs["record"]->setText(QString("Recording %1").arg(b2s(b)));
+        if (b && !rec->isRecording()) {
+            QString err = rec->start(Util::settings());
+            if (!err.isEmpty()) emit rec->error(err);
+        } else if (!b && rec->isRecording()) {
+            rec->stop();
+        }
+        updateToolBar();
     });
     a->setCheckable(true);
     tb->addSeparator();
 
-    tbActs["clock"] = a = tb->addAction("Clock OFF", this, [this](bool b){
-        Debug() << "Clock on/off: " <<  b2s(b);
-        tbActs["clock"]->setText(QString("Clock %1").arg(b2s(b)));
-    });
+    tbActs["clock"] = a = tb->addAction("Clock OFF", this, &MainWindow::updateToolBar);
     a->setCheckable(true);
-    tbActs["timing"] = a = tb->addAction("Timing OFF", this, [this](bool b){
-        Debug() << "Timing on/off: " <<  b2s(b);
-        tbActs["timing"]->setText(QString("Timing %1").arg(b2s(b)));
-    });
+    tbActs["timing"] = a = tb->addAction("Timing OFF", this, &MainWindow::updateToolBar);
     a->setCheckable(true);
     tb->addSeparator();
     tb->addWidget(new QLabel("Registers"));
@@ -115,4 +155,15 @@ void MainWindow::setupToolBar()
             Debug() << "Checkbox " << chk->text() << " (" << i << ") toggled " << b2s(b);
         });
     }
+}
+
+void MainWindow::updateToolBar()
+{
+    bool b;
+    b = tbActs["clock"]->isChecked();
+    tbActs["clock"]->setText(QString("Clock %1").arg(b2s(b)));
+    b = tbActs["timing"]->isChecked();
+    tbActs["timing"]->setText(QString("Timing %1").arg(b2s(b)));
+    b = tbActs["record"]->isChecked() && rec->isRecording();
+    tbActs["record"]->setText(QString("Recording %1").arg(b2s(b)));
 }

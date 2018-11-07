@@ -4,6 +4,7 @@
 #include <QImage>
 #include <QVector>
 #include "WorkerThread.h"
+#include "Frame.h"
 
 class QTimer;
 class PerSec;
@@ -16,7 +17,7 @@ public:
     ~FakeFrameGenerator();
 
 signals:
-    void generatedFrame(QImage);
+    void generatedFrame(const Frame &);
     void fps(double);
 
 public slots:
@@ -26,6 +27,7 @@ private slots:
 
 private:
     int w, h;
+    quint64 frameNum = 0ULL;
     QTimer *t = nullptr;
     QVector<QImage> frames;
     PerSec *ps = nullptr;

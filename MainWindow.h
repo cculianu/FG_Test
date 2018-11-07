@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include "Util.h"
 #include <QMainWindow>
 #include <QMap>
 #include <QVector>
@@ -10,6 +11,7 @@ class MainWindow;
 }
 
 class FakeFrameGenerator;
+class Recorder;
 
 class MainWindow : public QMainWindow
 {
@@ -23,16 +25,21 @@ protected:
     void closeEvent(QCloseEvent *) override;
 
 private slots:
-    void updateStatusMessage();
 
 private:
-    QMap<QString, QAction *> tbActs;
     void setupToolBar();
+    void updateToolBar();
+    void updateStatusMessage();
+    QMap<QString, QAction *> tbActs;
+    Throttler updateStatusMessageThrottled;
     Ui::MainWindow *ui;
     FakeFrameGenerator *fgen = nullptr;
 
-    enum StatusString { FPS1 = 0, FPS2, Count, Dropped, Recording, Misc, NStatus };
+    enum StatusString { FPS1 = 0, FPS2, FrameNum, Dropped, FrameNumRec, Recording, Misc, NStatus };
     QVector<QString> statusStrings = QVector<QString>(NStatus);
+
+    Recorder *rec = nullptr;
+
 };
 
 #endif // MAINWINDOW_H

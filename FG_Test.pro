@@ -34,7 +34,9 @@ SOURCES += \
     WorkerThread.cpp \
     FakeFrameGenerator.cpp \
     SerialPortWorker.cpp \
-    Prefs.cpp
+    Prefs.cpp \
+    Frame.cpp \
+    Recorder.cpp
 
 HEADERS += \
     App.h \
@@ -48,7 +50,9 @@ HEADERS += \
     WorkerThread.h \
     FakeFrameGenerator.h \
     SerialPortWorker.h \
-    Prefs.h
+    Prefs.h \
+    Frame.h \
+    Recorder.h
 
 FORMS += \
     MainWindow.ui \

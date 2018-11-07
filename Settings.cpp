@@ -15,18 +15,21 @@ Settings::~Settings()
 
 static const QString fmtStrings[] =
 {
-    "RAW", "PNG", "Mpeg2", "Mpeg4", "H.264", "ProRes4444", "ProRes422", "MJPEG", "FFV1", "LJPEG", "APNG",  "GIF", QString()
+    "RAW", "PNG", "JPG", "Mpeg2", "Mpeg4", "H.264", "ProRes4444", "ProRes422", "MJPEG", "FFV1", "LJPEG", "APNG",  "GIF", QString()
 };
 
 static const QString fmtPrettyStrings[] =
 {
-    "RAW", "PNG", "Mpeg2", "Mpeg4", "H.264", "Apple ProRes4444", "Apple ProRes422", "MJPEG (Motion JPEG)", "FFV1 (lossless)", "LJPEG (lossless JPEG)", "APNG (lossless)", "GIF (animated)", QString()
+    "RAW", "PNG", "JPEG", "Mpeg2", "Mpeg4", "H.264", "Apple ProRes4444", "Apple ProRes422", "MJPEG (Motion JPEG)", "FFV1 (lossless)", "LJPEG (lossless JPEG)", "APNG (lossless)", "GIF (animated)", QString()
 };
 
 const std::set<Settings::Fmt> Settings::EnabledFormats = {
-    Fmt_RAW, Fmt_PNG, Fmt_MJPEG
+    Fmt_RAW, Fmt_PNG, Fmt_JPG, //Fmt_MJPEG
 };
 
+const std::set<Settings::Fmt> Settings::ZipableFormats = {
+    Fmt_RAW, Fmt_PNG, Fmt_JPG
+};
 
 
 /*static*/ QString Settings::fmt2String(Fmt f, bool pretty) {
@@ -52,8 +55,8 @@ void Settings::load(int scope)
 
     if (scope & Main) {
         format = string2Fmt(s.value("format",fmt2String(Fmt_RAW)).toString());
-        if (!EnabledFormats.count(format)) format = Fmt_RAW;
-        zipEmbed = s.value("zipEmber", true).toBool();
+        if (!EnabledFormats.count(format)) format = defaultFormat;
+        zipEmbed = s.value("zipEmbed", true).toBool();
         saveDir = s.value("saveDir", QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)).toString();
         savePrefix = s.value("savePrefix", "Recording").toString();
     }

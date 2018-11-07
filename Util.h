@@ -8,9 +8,11 @@
 #include <QMutexLocker>
 #include <QPixmap>
 #include <functional>
+#include <QRunnable>
 
 struct Settings;
 class App;
+class QTimer;
 
 namespace Util {
 
@@ -208,6 +210,40 @@ signals:
 private:
     double tLast = -1.0, tLastEmit = 0.0;
     Avg avg;
+};
+
+/// Performs a function with at most frequency hz.
+/// If Throttler is called too quickly, it enqueues at most 1 call to a timer to be executed in the future.
+class Throttler
+{
+public:
+    typedef std::function<void(void)> VoidFunc;
+
+    Throttler(const VoidFunc &);
+    Throttler(VoidFunc &&);
+    ~Throttler();
+
+    void operator ()();
+
+    double hz() const { return hz_; }
+    void setHz(double h) { if (hz_ > 0.0) hz_ = h; }
+
+private:
+    VoidFunc func;
+    double hz_ = 4.0, tLast = 0.0;
+    QTimer *t = nullptr;
+};
+
+class LambdaRunnable : public QRunnable
+{
+public:
+    typedef std::function<void(void)> VoidFunc;
+    LambdaRunnable(const VoidFunc &);
+    LambdaRunnable(VoidFunc &&);
+    ~LambdaRunnable() override;
+    void run() override;
+private:
+    VoidFunc func;
 };
 
 #define qs2cstr(s) (s.toUtf8().constData())

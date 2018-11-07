@@ -13,7 +13,7 @@ GLVideoWidget::~GLVideoWidget()
     delete pd; pd = nullptr;
 }
 
-void GLVideoWidget::updateFrame(QImage inframe)
+void GLVideoWidget::updateFrame(const Frame & inframe)
 {
     frame = inframe;
     update();
@@ -39,14 +39,15 @@ void GLVideoWidget::resizeGL(int w, int h)
 
 void GLVideoWidget::paintGL()
 {
-    if (frame.isNull()) {
+    if (frame.img.isNull()) {
         glClearColor(0.0,0.0,0.0,1.0);
         glClear(GL_COLOR_BUFFER_BIT);
     } else if (pd) {
         const QRect r(QPoint(), pd->size());
         QPainter p(pd);
         p.setRenderHint(QPainter::SmoothPixmapTransform, /*set to false for now.. true*/false);
-        p.drawImage(r, frame);
+        p.drawImage(r, frame.img);
+        emit displayedFrame(frame.num);
     }
     ps.mark();
 }

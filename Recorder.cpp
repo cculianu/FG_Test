@@ -129,7 +129,7 @@ void Recorder::saveFrame_InAThread(const Frame &f)
             const qint64 len = f.img.bytesPerLine()*f.img.height();
             if (p->isZip) {
                 // zip file.. skip writing to buffer.. instear "point" buffer at img data. This usage ensures no extra copying
-                outbytes = QByteArray::fromRawData(reinterpret_cast<const char *>(f.img.constBits()), len);
+                outbytes = QByteArray::fromRawData(reinterpret_cast<const char *>(f.img.constBits()), int(len));
             } else {
                 // not a zip file. write to output file.
                 if (const qint64 res = out->write(reinterpret_cast<const char *>(f.img.constBits()), len); res < 0LL)

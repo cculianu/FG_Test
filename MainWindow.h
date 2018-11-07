@@ -12,6 +12,7 @@ class MainWindow;
 
 class FakeFrameGenerator;
 class Recorder;
+class Dialog;
 
 class MainWindow : public QMainWindow
 {
@@ -40,6 +41,10 @@ private:
 
     Recorder *rec = nullptr;
 
+    // tmp dialog for "Please Wait..."
+    QDialog *dlg_tmp = nullptr;
+    void kill_dlg();
+    void show_dlg(const QString &);
 };
 
 #endif // MAINWINDOW_H

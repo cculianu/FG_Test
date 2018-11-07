@@ -9,6 +9,7 @@
 #include <QToolBar>
 #include <QLabel>
 #include <QCheckBox>
+#include <QGridLayout>
 
 namespace {
     static QString b2s(bool b)  { return  (b ? "ON" : "OFF"); }
@@ -71,6 +72,7 @@ MainWindow::MainWindow(QWidget *parent) :
         updateStatusMessageThrottled();
     });
     connect(rec, &Recorder::stopped, this, [this](){
+        kill_dlg();
         statusStrings[Recording] = "";
         statusStrings[FrameNumRec] = "";
         statusStrings[Dropped] = "";
@@ -79,6 +81,7 @@ MainWindow::MainWindow(QWidget *parent) :
         updateStatusMessageThrottled();
     });
     connect(rec, &Recorder::started, this, [this](QString fname) {
+        kill_dlg();
         statusStrings[Recording] = QString("Saving to '%1'...").arg(fname);
         tbActs["record"]->setChecked(true);
         updateToolBar();
@@ -125,16 +128,40 @@ void MainWindow::closeEvent(QCloseEvent *e) {
     e->ignore();
 }
 
+void MainWindow::kill_dlg()
+{
+    if (dlg_tmp) { dlg_tmp->deleteLater(); dlg_tmp = nullptr; }
+}
+
+void MainWindow::show_dlg(const QString &msg)
+{
+    static const QString title("Please wait");
+    kill_dlg();
+    dlg_tmp = new QDialog(this, Qt::Dialog|Qt::MSWindowsFixedSizeDialogHint);
+    dlg_tmp->setWindowTitle(title);
+    auto gl = new QGridLayout(dlg_tmp);
+    dlg_tmp->setLayout(gl);
+    auto l = new QLabel(msg, dlg_tmp);
+    l->setAlignment(Qt::AlignCenter);
+    gl->addWidget(l);
+    dlg_tmp->open();
+}
+
 void MainWindow::setupToolBar()
 {
     auto tb = ui->toolBar;
     QAction *a;
 
-    tbActs["record"] = a = tb->addAction("Recording OFF", this, [this](bool b){
+    tbActs["record"] = a = tb->addAction("Recording OFF", this, [this](bool b) {
         if (b && !rec->isRecording()) {
+            show_dlg("Recording Starting...");
             QString err = rec->start(Util::settings());
-            if (!err.isEmpty()) emit rec->error(err);
+            if (!err.isEmpty()) {
+                kill_dlg();
+                emit rec->error(err);
+            }
         } else if (!b && rec->isRecording()) {
+            show_dlg("Please Wait...");
             rec->stop();
         }
         updateToolBar();

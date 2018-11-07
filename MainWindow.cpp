@@ -10,6 +10,7 @@
 #include <QLabel>
 #include <QCheckBox>
 #include <QGridLayout>
+#include <QTimer>
 
 namespace {
     static QString b2s(bool b)  { return  (b ? "ON" : "OFF"); }
@@ -137,7 +138,7 @@ void MainWindow::show_dlg(const QString &msg)
 {
     static const QString title("Please wait");
     kill_dlg();
-    dlg_tmp = new QDialog(this, Qt::Dialog|Qt::MSWindowsFixedSizeDialogHint);
+    dlg_tmp = new QDialog(this, Qt::Dialog|Qt::MSWindowsFixedSizeDialogHint|Qt::FramelessWindowHint|Qt::Sheet);
     dlg_tmp->setWindowTitle(title);
     auto gl = new QGridLayout(dlg_tmp);
     dlg_tmp->setLayout(gl);
@@ -162,7 +163,8 @@ void MainWindow::setupToolBar()
             }
         } else if (!b && rec->isRecording()) {
             show_dlg("Please Wait...");
-            rec->stop();
+            // this makes sure the dialog appears.. on Windows it doesn't show up in time.
+            QTimer::singleShot(10, this, [this]{ rec->stop(); });
         }
         updateToolBar();
     });

@@ -76,14 +76,16 @@ win32 {
     CONFIG += windows
     LIBS += opengl32.lib $$PWD/QuaZip/winzlib/lib/zlib.lib
     CONFIG(debug, debug|release) {
-        LIBS += $$OUT_PWD/QuaZip/quaip/debug/quazip.lib
+        LIBS += $$OUT_PWD/QuaZip/quazip/debug/quazip.lib
     }
     CONFIG(release, debug|release) {
-        LIBS += $$OUT_PWD/QuaZip/quaip/release/quazip.lib
+        LIBS += $$OUT_PWD/QuaZip/quazip/release/quazip.lib
     }
+    INCLUDEPATH += $$PWD/QuaZip/winzlib/include
 }
 
-INCLUDEPATH += QuaZip
+INCLUDEPATH += $$PWD/QuaZip
+DEFINES += QUAZIP_STATIC
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

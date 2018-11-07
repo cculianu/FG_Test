@@ -79,7 +79,7 @@ MainWindow::MainWindow(QWidget *parent) :
         statusStrings[Dropped] = "";
         statusStrings[MBPerSec] = "";
         tbActs["record"]->setChecked(false);
-        Debug() << "Recording stopped.";
+        Log() << "Recording stopped.";
         updateToolBar();
         updateStatusMessageThrottled();
     });
@@ -87,7 +87,7 @@ MainWindow::MainWindow(QWidget *parent) :
         kill_dlg();
         statusStrings[Recording] = QString("Saving to '%1'...").arg(fname);
         tbActs["record"]->setChecked(true);
-        Debug() << "Recording started, saving to: " << fname;
+        Log() << "Recording started, saving to: " << fname;
         updateToolBar();
         updateStatusMessageThrottled();
     });

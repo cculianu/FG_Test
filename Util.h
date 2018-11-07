@@ -202,7 +202,7 @@ public:
 
     double emitTimeoutSecs = 1.0;
 
-    void mark(); ///< record the current time. May emit perSec() periodically.
+    void mark(double multiplier = 1.0); ///< record the current time. May emit perSec() periodically.
 
 signals:
     void perSec(double);

@@ -23,6 +23,7 @@ signals:
     void wroteFrame(quint64 frameNum);
     void frameDropped(quint64);
     void stopLater();
+    void dataRate(double mbPerSec); ///< emitted periodically to inform calling code about the MB/sec data rate written to disk
 
 public slots:
     void stop();

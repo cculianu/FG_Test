@@ -77,7 +77,9 @@ MainWindow::MainWindow(QWidget *parent) :
         statusStrings[Recording] = "";
         statusStrings[FrameNumRec] = "";
         statusStrings[Dropped] = "";
+        statusStrings[MBPerSec] = "";
         tbActs["record"]->setChecked(false);
+        Debug() << "Recording stopped.";
         updateToolBar();
         updateStatusMessageThrottled();
     });
@@ -85,6 +87,7 @@ MainWindow::MainWindow(QWidget *parent) :
         kill_dlg();
         statusStrings[Recording] = QString("Saving to '%1'...").arg(fname);
         tbActs["record"]->setChecked(true);
+        Debug() << "Recording started, saving to: " << fname;
         updateToolBar();
         updateStatusMessageThrottled();
     });
@@ -99,6 +102,11 @@ MainWindow::MainWindow(QWidget *parent) :
             n = sl.first().toLong();
         }
         statusStrings[Dropped] = QString("%1 Dropped").arg(++n);
+    });
+    connect(rec, &Recorder::dataRate, this, [this](double rate){
+        if (!rec->isRecording()) return;
+        statusStrings[MBPerSec] = QString("%1 MB/s").arg(rate, 0, 'f', 1);
+        updateStatusMessageThrottled();
     });
     connect(fgen, &FakeFrameGenerator::generatedFrame, rec, &Recorder::saveFrame);
 

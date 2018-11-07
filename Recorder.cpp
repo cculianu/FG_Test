@@ -10,6 +10,8 @@
 #include <QBuffer>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QTimer>
+#include <atomic>
 
 struct Recorder::Pvt
 {
@@ -28,6 +30,12 @@ struct Recorder::Pvt
             zip->setZip64Enabled(true);
             zipFile = new QuaZipFile(zip);
         }
+        QTimer *t = new QTimer(&perSec);
+        connect(t, &QTimer::timeout, &perSec, [this]{
+            const auto bytes = wroteBytes.exchange(0LL);
+            perSec.mark(double(bytes)/1e6);
+        });
+        t->start(333);
     }
     ~Pvt() {
         if (zipFile) { if (zipFile->isOpen()) zipFile->close(); delete zipFile; zipFile = nullptr; }
@@ -40,6 +48,8 @@ struct Recorder::Pvt
     QuaZip *zip = nullptr;
     QuaZipFile *zipFile = nullptr;
     QMutex zipMut;
+    PerSec perSec;
+    std::atomic<qint64> wroteBytes;
 };
 
 Recorder::Recorder(QObject *parent) : QObject(parent)
@@ -81,7 +91,7 @@ QString Recorder::start(const Settings &settings, QString *saveLocation)
     outDir = settings.saveDir + QDir::separator() + outDir;
     p = new Pvt(outDir, settings.format);
     if (saveLocation) *saveLocation = outDir;
-
+    connect(&p->perSec, SIGNAL(perSec(double)), this, SIGNAL(dataRate(double)));
     emit started(outDir);
     return QString();
 }
@@ -118,6 +128,7 @@ void Recorder::saveFrame_InAThread(const Frame &f)
         QBuffer outbuf(&outbytes);
         const QString fname = QString("Frame_%1.%2").arg(f.num,6,10,QChar('0')).arg(ext);
         QFile outf(p->dest + QDir::separator() + fname);
+        qint64 wroteBytes = 0LL;
         if (p->isZip)
             out = &outbuf;
         else
@@ -153,12 +164,15 @@ void Recorder::saveFrame_InAThread(const Frame &f)
             }
             if (qint64 len = p->zipFile->write(outbytes); len != outbytes.length()) {
                 throw Err{p->zipFile->errorString()};
-            }
+            } else
+                wroteBytes = len;
             p->zipFile->close();
             if (p->zipFile->getZipError() != Z_OK) {
                 throw Err{"Error on close within zip file"};
             }
-        }
+        } else
+            wroteBytes = out->pos();
+        p->wroteBytes += wroteBytes;
         emit wroteFrame(f.num);
     } catch (const Err & e) {
         emit error(e.err);

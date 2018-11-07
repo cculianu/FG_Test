@@ -533,12 +533,12 @@ Systray::~Systray()
 }
 
 
-void PerSec::mark()
+void PerSec::mark(double mul)
 {
     const double tNow = Util::getTimeSecs();
     if (tLast >= 0.0) {
         // compute per sec Avg
-        avg(1.0/(tNow-tLast));
+        avg(mul/(tNow-tLast));
         if (tNow-tLastEmit >= emitTimeoutSecs) {
             emit perSec(avg());
             tLastEmit = tNow;

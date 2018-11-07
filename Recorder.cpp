@@ -14,12 +14,13 @@ struct Recorder::Pvt
     }
     QThreadPool pool;
     QString outDir;
-    Settings::Fmt format;
+    const Settings::Fmt format;
 };
 
 Recorder::Recorder(QObject *parent) : QObject(parent)
 {
-    connect(this, SIGNAL(stopLater()), this, SLOT(stop())); // this is so our ThreadPool thread can stop recording by posting signal to main thread.
+    // this is so our ThreadPool thread can stop recording by posting this signal to the main thread.
+    connect(this, SIGNAL(stopLater()), this, SLOT(stop()));
 }
 
 Recorder::~Recorder()
@@ -63,42 +64,45 @@ void Recorder::saveFrame(const Frame &f_in)
 {
     if (!isRecording()) return;
     Frame f(f_in);
-    auto r = new LambdaRunnable([this, f] {
-        QString ext = Settings::fmt2String(p->format).toLower();
-
-        QFile out(p->outDir + QDir::separator() + QString("Frame_%1.%2").arg(f.num,6,10,QChar('0')).arg(ext));
-        if (!out.open(QFile::WriteOnly|QFile::NewOnly)) {
-            emit error(out.errorString());
-            emit stopLater();
-            return;
-        }
-        if (p->format == Settings::Fmt_RAW) {
-            qint64 len = f.img.bytesPerLine()*f.img.height();
-            if (qint64 res = out.write(reinterpret_cast<const char *>(f.img.constBits()), len); res < 0LL) {
-                emit error(out.errorString());
-                emit stopLater();
-                return;
-            } else if (res != len) {
-                emit error("Short write.");
-                emit stopLater();
-                return;
-            }
-        } else if (p->format == Settings::Fmt_PNG || p->format == Settings::Fmt_JPG) {
-            if (!f.img.save(&out, ext.toUpper().toUtf8().constData())) {
-                emit error(QString("Error writing %1 image").arg(ext.toUpper()));
-                emit stopLater();
-                return;
-            }
-        } else {
-            emit error("Invalid format");
-            emit stopLater();
-            return;
-        }
-        emit wroteFrame(f.num);
-    });
+    auto r = new LambdaRunnable([this, f] { saveFrame_InAThread_NoZip(f); });
     if (!p->pool.tryStart(r)) {
         delete r; r = nullptr;
         Warning() << "Frame " << f.num << " dropped";
         emit frameDropped(f.num);
+    }
+}
+
+void Recorder::saveFrame_InAThread_NoZip(const Frame &f)
+{
+    if (!p) {
+        // defensive programming.  this check is not going to ever be true (unless we change this class around and forget to update this code).
+        QString err("INTERNAL ERROR: 'p' ptr is null but we are still saving in saveFrame_InAThread_NoZip!");
+        Error() << err; emit error(err); return;
+    }
+
+    struct Err { QString err; };
+
+    try {
+        QString ext = Settings::fmt2String(p->format).toLower();
+
+        QFile out(p->outDir + QDir::separator() + QString("Frame_%1.%2").arg(f.num,6,10,QChar('0')).arg(ext));
+        if (!out.open(QFile::WriteOnly|QFile::NewOnly))
+            throw Err{out.errorString()};
+        if (p->format == Settings::Fmt_RAW) {
+            qint64 len = f.img.bytesPerLine()*f.img.height();
+            if (qint64 res = out.write(reinterpret_cast<const char *>(f.img.constBits()), len); res < 0LL)
+                throw Err{out.errorString()};
+            else if (res != len)
+                throw Err{"Short write"};
+        } else if (p->format == Settings::Fmt_PNG || p->format == Settings::Fmt_JPG) {
+            if (!f.img.save(&out, ext.toUpper().toUtf8().constData()))
+                throw Err{QString("Error writing %1 image").arg(ext.toUpper())};
+        } else
+            throw Err{"Invalid format"};
+        emit wroteFrame(f.num);
+    } catch (const Err & e) {
+        emit error(e.err);
+        emit stopLater();
+        return;
     }
 }

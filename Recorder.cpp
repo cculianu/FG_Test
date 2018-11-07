@@ -114,7 +114,8 @@ void Recorder::saveFrame_InAThread(const Frame &f)
         QString ext = Settings::fmt2String(p->format).toLower();
 
         QIODevice *out = nullptr;
-        QBuffer outbuf;
+        QByteArray outbytes;
+        QBuffer outbuf(&outbytes);
         const QString fname = QString("Frame_%1.%2").arg(f.num,6,10,QChar('0')).arg(ext);
         QFile outf(p->dest + QDir::separator() + fname);
         if (p->isZip)
@@ -124,12 +125,21 @@ void Recorder::saveFrame_InAThread(const Frame &f)
         if (!out->open(QFile::WriteOnly|QFile::NewOnly))
             throw Err{out->errorString()};
         if (p->format == Settings::Fmt_RAW) {
-            qint64 len = f.img.bytesPerLine()*f.img.height();
-            if (qint64 res = out->write(reinterpret_cast<const char *>(f.img.constBits()), len); res < 0LL)
-                throw Err{out->errorString()};
-            else if (res != len)
-                throw Err{"Short write"};
+            // not zip file, write to file
+            const qint64 len = f.img.bytesPerLine()*f.img.height();
+            if (p->isZip) {
+                // zip file.. skip writing to buffer.. instear "point" buffer at img data. This usage ensures no extra copying
+                outbytes = QByteArray::fromRawData(reinterpret_cast<const char *>(f.img.constBits()), len);
+            } else {
+                // not a zip file. write to output file.
+                if (const qint64 res = out->write(reinterpret_cast<const char *>(f.img.constBits()), len); res < 0LL)
+                    throw Err{out->errorString()};
+                else if (res != len)
+                    throw Err{"Short write"};
+            }
         } else if (p->format == Settings::Fmt_PNG || p->format == Settings::Fmt_JPG) {
+            // JPG/PNG needs conversion so this usage does the conversion. In the zip file case we are writing to outbytes.
+            // In the non zip file case we are writing to a disk file here.
             if (!f.img.save(out, ext.toUpper().toUtf8().constData()))
                 throw Err{QString("Error writing %1 image").arg(ext.toUpper())};
         } else
@@ -141,7 +151,7 @@ void Recorder::saveFrame_InAThread(const Frame &f)
             if (!p->zipFile->open(QuaZipFile::WriteOnly|QuaZipFile::NewOnly, inf, nullptr, 0, Z_DEFLATED, Z_NO_COMPRESSION)) {
                 throw Err{p->zipFile->errorString()};
             }
-            if (qint64 len = p->zipFile->write(outbuf.buffer()); len != outbuf.buffer().length()) {
+            if (qint64 len = p->zipFile->write(outbytes); len != outbytes.length()) {
                 throw Err{p->zipFile->errorString()};
             }
             p->zipFile->close();

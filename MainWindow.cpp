@@ -116,7 +116,7 @@ MainWindow::~MainWindow()
 }
 
 void MainWindow::closeEvent(QCloseEvent *e) {
-    if (QMessageBox::question(this,"Confirm Quit", QString("Are you sure you wish to quit %1?").arg(qApp->applicationName())) == QMessageBox::Yes) {
+    if (!rec || !rec->isRecording() || QMessageBox::question(this,"Confirm Quit", QString("A recording is running.\nAre you sure you wish to quit %1?").arg(qApp->applicationName())) == QMessageBox::Yes) {
         QMainWindow::closeEvent(e);
         e->accept();
         qApp->quit();

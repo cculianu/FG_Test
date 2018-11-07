@@ -9,7 +9,6 @@
 #include <QToolBar>
 #include <QLabel>
 #include <QCheckBox>
-#include "quazip/quazipfile.h"
 
 namespace {
     static QString b2s(bool b)  { return  (b ? "ON" : "OFF"); }
@@ -20,10 +19,6 @@ MainWindow::MainWindow(QWidget *parent) :
     updateStatusMessageThrottled([this]{updateStatusMessage();}),
     ui(new Ui::MainWindow)
 {
-    QuaZipFile *f = new QuaZipFile();
-    qDebug("quazipfile created!");
-    delete f;
-
     ui->setupUi(this);
     setWindowIcon(QIcon(":/Img/app_icon.png"));
     using Util::Connect; using Util::app;

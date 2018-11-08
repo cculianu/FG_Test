@@ -36,7 +36,8 @@ SOURCES += \
     SerialPortWorker.cpp \
     Prefs.cpp \
     Frame.cpp \
-    Recorder.cpp
+    Recorder.cpp \
+    encode_video.c
 
 HEADERS += \
     App.h \
@@ -67,7 +68,32 @@ RESOURCES += \
 macx {
     # Add mac-specific libs, etc, here
     #LIBS += -framework CoreServices
-    LIBS += -L $$OUT_PWD/QuaZip/quazip -lquazip -lz
+    LIBS += -L$$OUT_PWD/QuaZip/quazip -lquazip -lz
+
+    # FFmpeg
+    INCLUDEPATH += $$PWD/FFmpeg/osx/include
+    fflib.dir = $$PWD/FFmpeg/osx/bin
+    fflib.flags = -L$$fflib.dir
+    fflib.all_files = $$files($$fflib.dir/*.dylib)
+    fflib.cpydest = $$OUT_PWD/$${TARGET}.app/Contents/MacOS
+    for(f, fflib.all_files) {
+        bn = $$basename(f) # bn is of the form libXXX.dylib
+        fflib.libs += $$bn  # save libXXX.dylib filename just in case we need it
+        fflib.destlibs += $${fflib.cpydest}/$${bn}
+        tmp = $$replace(bn, .dylib, ) # libXXX.dylib -> libXXX
+        tmp = $$replace(tmp, lib, -l) # libXXX -> -lXXX
+        fflib.flags += $$tmp # add -lXXX flags for below 'LIBS +='
+    }
+    #message($$fflib.destlibs)
+    # add the above-constructed -L/bla/bla -lXXX -lYYY to the LIBS for qmake...
+    LIBS += $$fflib.flags
+    # The following copies the .dylibs to the generated .app bundle
+    cpy.target = not_a_real_file
+    cpy.commands = mkdir -vp $$fflib.cpydest; cp -fpv $$fflib.all_files $$fflib.cpydest
+    cpy.depends = cpy2
+    cpy2.commands = @echo Copying .dylibs to .app bundle...
+    QMAKE_EXTRA_TARGETS += cpy cpy2
+    POST_TARGETDEPS += not_a_real_file #$$member(fflib.destlibs, 0, 0)
 }
 
 win32 {
@@ -82,6 +108,7 @@ win32 {
         LIBS += $$OUT_PWD/QuaZip/quazip/release/quazip.lib
     }
     INCLUDEPATH += $$PWD/QuaZip/winzlib/include
+    INCLUDEPATH += $$PWD/FFmpeg/win/include
 }
 
 INCLUDEPATH += $$PWD/QuaZip

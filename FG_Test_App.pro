@@ -84,7 +84,6 @@ macx {
         tmp = $$replace(tmp, lib, -l) # libXXX -> -lXXX
         fflib.flags += $$tmp # add -lXXX flags for below 'LIBS +='
     }
-    #message($$fflib.destlibs)
     # add the above-constructed -L/bla/bla -lXXX -lYYY to the LIBS for qmake...
     LIBS += $$fflib.flags
     # The following copies the .dylibs to the generated .app bundle
@@ -125,7 +124,7 @@ win32 {
     }
     # The following copies the DLLs to the same directory as the .EXE
     cpy.target = not_a_real_file
-    cpy.commands = copy $$shell_path($${fflib.bindir}/*.dll) $$shell_path($${fflib.cpydest})
+    cpy.commands = copy /Y $$shell_path($${fflib.bindir}/*.dll) $$shell_path($${fflib.cpydest})
     cpy.depends = cpy2
     cpy2.commands = @echo Copying .DLLs to same dir as .EXE...
     QMAKE_EXTRA_TARGETS += cpy cpy2

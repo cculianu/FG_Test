@@ -94,6 +94,7 @@ macx {
     cpy2.commands = @echo Copying .dylibs to .app bundle...
     QMAKE_EXTRA_TARGETS += cpy cpy2
     POST_TARGETDEPS += not_a_real_file #$$member(fflib.destlibs, 0, 0)
+    QMAKE_CLEAN += $$fflib.destlibs
 }
 
 win32 {
@@ -109,6 +110,28 @@ win32 {
     }
     INCLUDEPATH += $$PWD/QuaZip/winzlib/include
     INCLUDEPATH += $$PWD/FFmpeg/win/include
+
+    # FFmpeg
+    fflib.bindir = $$PWD/FFmpeg/win/bin
+    fflib.libdir = $$PWD/FFmpeg/win/lib
+    fflib.incdir = $$PWD/FFmpeg/win/include
+    INCLUDEPATH += $$fflib.incdir
+    LIBS += $$files($${fflib.libdir}/*.lib)
+    CONFIG(debug, debug|release) {
+        fflib.cpydest = $$OUT_PWD/debug
+    }
+    CONFIG(release, debug|release) {
+        fflib.cpydest = $$OUT_PWD/release
+    }
+    # The following copies the DLLs to the same directory as the .EXE
+    cpy.target = not_a_real_file
+    cpy.commands = copy $$shell_path($${fflib.bindir}/*.dll) $$shell_path($${fflib.cpydest})
+    cpy.depends = cpy2
+    cpy2.commands = @echo Copying .DLLs to same dir as .EXE...
+    QMAKE_EXTRA_TARGETS += cpy cpy2
+    POST_TARGETDEPS += not_a_real_file
+    QMAKE_CLEAN += $$files($${fflib.cpydest}/*.dll)
+
 }
 
 INCLUDEPATH += $$PWD/QuaZip

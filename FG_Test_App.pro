@@ -99,7 +99,7 @@ macx {
     cpy.depends = cpy2
     cpy2.commands = @echo Copying .dylibs to .app bundle...
     QMAKE_EXTRA_TARGETS += cpy cpy2
-    POST_TARGETDEPS += not_a_real_file #$$member(fflib.destlibs, 0, 0)
+    POST_TARGETDEPS += not_a_real_file
     QMAKE_CLEAN += $$fflib.destlibs
 }
 

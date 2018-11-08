@@ -36,8 +36,7 @@ SOURCES += \
     SerialPortWorker.cpp \
     Prefs.cpp \
     Frame.cpp \
-    Recorder.cpp \
-    encode_video.c
+    Recorder.cpp
 
 HEADERS += \
     App.h \
@@ -64,6 +63,14 @@ FORMS += \
 RESOURCES += \
     Resources.qrc \
     qdarkstyle/style.qrc
+
+win32|macx {
+    !contains(QT_ARCH, x86_64) {
+        error("Only 64-bit builds are supported at this time. Please reconfigure your project in Qt Creator using a 64-bit Kit.")
+    }
+} else {
+    error("Only Windows and macOS builds are supported at this time.")
+}
 
 macx {
     # Add mac-specific libs, etc, here

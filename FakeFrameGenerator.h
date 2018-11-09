@@ -13,8 +13,11 @@ class FakeFrameGenerator : public WorkerThread
 {
     Q_OBJECT
 public:
-    FakeFrameGenerator(int width = 5056, int height = 2968, double fps = 10.0, int nUniqueFrames = 20);
+    FakeFrameGenerator(int width = Frame::DefaultWidth(), int height = Frame::DefaultHeight(),
+                       double fps = Frame::DefaultFPS(), int nUniqueFrames = 20);
     ~FakeFrameGenerator();
+
+    double requestedFPS() const { return reqfps; }
 
 signals:
     void generatedFrame(const Frame &);
@@ -27,6 +30,7 @@ private slots:
 
 private:
     int w, h;
+    double reqfps;
     quint64 frameNum = 0ULL;
     QTimer *t = nullptr;
     QVector<QImage> frames;

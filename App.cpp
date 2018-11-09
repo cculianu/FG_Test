@@ -8,6 +8,7 @@
 #include <QSystemTrayIcon>
 #include <QMenu>
 #include <QMessageBox>
+#include <chrono>
 
 #include "App.h"
 #include "Util.h"
@@ -143,7 +144,8 @@ void App::logLine(const QString &line, const QColor &color) {
     }
     if (!debugWin) {
         backlog.push_back(QPair<QString,QColor>(line,color));
-        QTimer::singleShot(100, this, SLOT(clearBacklog()));
+        using namespace std::chrono;
+        QTimer::singleShot(100ms, this, SLOT(clearBacklog()));
         return;
     }
     if (QThread::currentThread() == this->thread()) {
@@ -162,7 +164,8 @@ void App::logLine(const QString &line, const QColor &color) {
 void App::clearBacklog() {
     if (!backlog.empty()) {
         if (!debugWin) {
-            QTimer::singleShot(100, this, SLOT(clearBacklog()));
+            using namespace std::chrono;
+            QTimer::singleShot(100ms, this, SLOT(clearBacklog()));
             return;
         }
         auto bl = backlog; backlog.clear();

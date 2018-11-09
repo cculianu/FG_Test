@@ -3,6 +3,7 @@
 #include <QTimer>
 #include <cstdlib>
 #include <QtGlobal>
+#include <chrono>
 
 FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq)
     : w(w_in), h(h_in)
@@ -16,7 +17,9 @@ FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq
 
     frames.reserve(nuniq);
 
-    postLambdaSync([this, fps] {
+    reqfps = fps;
+
+    postLambdaSync([this] {
         // run in thread...
 
         ps = new PerSec(this);
@@ -24,7 +27,7 @@ FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq
 
         t = new QTimer(this);
         t->setSingleShot(false);
-        t->setInterval(int(1000.0/fps));
+        t->setInterval(std::chrono::milliseconds(int(1000.0/reqfps)));
         connect(t, SIGNAL(timeout()), this, SLOT(genFrame()));
         t->start();
     });

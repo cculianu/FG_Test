@@ -39,7 +39,7 @@ void GLVideoWidget::resizeGL(int w, int h)
 
 void GLVideoWidget::paintGL()
 {
-    if (frame.img.isNull()) {
+    if (frame.isNull()) {
         glClearColor(0.0,0.0,0.0,1.0);
         glClear(GL_COLOR_BUFFER_BIT);
     } else if (pd) {

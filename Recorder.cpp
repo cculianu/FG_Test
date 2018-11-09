@@ -3,6 +3,7 @@
 #include "Util.h"
 #include "quazip/quazip.h"
 #include "quazip/quazipfile.h"
+#include "FFmpegEncoder.h"
 #include <QDir>
 #include <QDateTime>
 #include <QThreadPool>
@@ -12,34 +13,45 @@
 #include <QMutexLocker>
 #include <QTimer>
 #include <atomic>
+#include <chrono>
 
 struct Recorder::Pvt
 {
-    Pvt(const QString &o, Settings::Fmt f) : dest(o), format(f) {
-        int n = QThread::idealThreadCount()-1;
-        if (n < 1) n = 1;
-        pool.setMaxThreadCount(n);
-        if (dest.endsWith(".zip")) {
-            isZip = true;
-            zip = new QuaZip(dest);
-            if (!zip->open(QuaZip::mdCreate)) {
-                Error() << "Error opening zip";
-                delete zip; zip = nullptr;
-                return;
+    Pvt(const QString &o, Settings::Fmt f, double fps) : dest(o), format(f) {
+        if (Settings::FFmpegFormats.count(format)) {
+            unsigned n = Util::getNPhysicalProcessors();
+            if (n < 1) n = 1;
+            pool.setMaxThreadCount(1); // only 1 processing thread. multiple threads happen in the encoder itself.
+            isZip = false;
+            ff = new FFmpegEncoder(dest, fps, 0/*int(Frame::DefaultWidth()*Frame::DefaultHeight()*2*8*fps)*/, format, n);
+        } else {
+            int n = QThread::idealThreadCount()-1;
+            if (n < 1) n = 1;
+            pool.setMaxThreadCount(n);
+            if (dest.endsWith(".zip")) {
+                isZip = true;
+                zip = new QuaZip(dest);
+                if (!zip->open(QuaZip::mdCreate)) {
+                    Error() << "Error opening zip";
+                    delete zip; zip = nullptr;
+                    return;
+                }
+                zip->setZip64Enabled(true);
+                zipFile = new QuaZipFile(zip);
             }
-            zip->setZip64Enabled(true);
-            zipFile = new QuaZipFile(zip);
         }
         QTimer *t = new QTimer(&perSec);
         connect(t, &QTimer::timeout, &perSec, [this]{
             const auto bytes = wroteBytes.exchange(0LL);
             perSec.mark(double(bytes)/1e6);
         });
-        t->start(333);
+        using namespace std::chrono;
+        t->start(333ms);
     }
     ~Pvt() {
         if (zipFile) { if (zipFile->isOpen()) zipFile->close(); delete zipFile; zipFile = nullptr; }
         if (zip) { if (zip->isOpen()) zip->close(); delete zip; zip = nullptr; }
+        if (ff) { delete ff; ff = nullptr; }
     }
     QThreadPool pool;
     QString dest;
@@ -50,6 +62,8 @@ struct Recorder::Pvt
     QMutex zipMut;
     PerSec perSec;
     std::atomic<qint64> wroteBytes;
+
+    FFmpegEncoder *ff = nullptr;
 };
 
 Recorder::Recorder(QObject *parent) : QObject(parent)
@@ -83,13 +97,14 @@ QString Recorder::start(const Settings &settings, QString *saveLocation)
     QString outDir = QString("%1%2")
             .arg(settings.savePrefix.isEmpty() ? "" : QString("%1_").arg(settings.savePrefix))
             .arg(QDateTime::currentDateTime().toString("yyMMdd_HHmmss"));
-    if (settings.zipEmbed) outDir += ".zip";
+    if (Settings::FFmpegFormats.count(settings.format)) outDir += ".avi";
+    else if (settings.zipEmbed) outDir += ".zip";
     else {
         if (!d.mkdir(QString(outDir)))
             return "Error creating output directory.";
     }
     outDir = settings.saveDir + QDir::separator() + outDir;
-    p = new Pvt(outDir, settings.format);
+    p = new Pvt(outDir, settings.format, settings.fps);
     if (saveLocation) *saveLocation = outDir;
     connect(&p->perSec, SIGNAL(perSec(double)), this, SIGNAL(dataRate(double)));
     emit started(outDir);
@@ -99,12 +114,37 @@ QString Recorder::start(const Settings &settings, QString *saveLocation)
 void Recorder::saveFrame(const Frame &f_in)
 {
     if (!isRecording()) return;
-    Frame f(f_in);
-    auto r = new LambdaRunnable([this, f] { saveFrame_InAThread(f); });
-    if (!p->pool.tryStart(r)) {
-        delete r; r = nullptr;
-        Warning() << "Frame " << f.num << " dropped";
-        emit frameDropped(f.num);
+    if (!p->ff) {
+        // no FFmpegEncoder, use "img save"
+        Frame f(f_in);
+        auto r = new LambdaRunnable([this, f] { saveFrame_InAThread(f); });
+        if (!p->pool.tryStart(r)) {
+            delete r; r = nullptr;
+            Warning() << "Frame " << f.num << " dropped";
+            emit frameDropped(f.num);
+        }
+    } else {
+        // use FFmpegEncoder
+        bool ok; QString err;
+        ok = p->ff->enqueue(f_in, &err);
+        if (!ok) {
+            Warning() << "Failed to enqueue frame " << f_in.num << " error was: " << err;
+        }
+        auto r = new LambdaRunnable([this]{
+            if (p && p->ff) {
+                QString err; qint64 res; int tenc;
+                while ( (res=p->ff->processOneVideoFrame(10,&err,&tenc)) > 0 ) {
+                    Debug() << "Processed frame " << res << " in " << tenc << " ms";
+                }
+                p->wroteBytes += qint64(p->ff->bytesWritten());
+                if (res < 0) { Debug() << "Process frame got error: " << err; }
+                else if (res > 0) emit wroteFrame(quint64(res));
+            }
+        });
+        if (!p->pool.tryStart(r)) {
+            // silently ignore already-busy pool
+            delete r; r = nullptr;
+        }
     }
 }
 

@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QVector>
 #include <map>
+#include <chrono>
 #include <QLineEdit>
 
 namespace  {
@@ -48,7 +49,8 @@ UARTBox::UARTBox(QWidget *parent) :
     connect(this, SIGNAL(portSettingsChanged(QString)), wrk, SLOT(applyNewPortSettings(QString)));
     connect(this, SIGNAL(sendCharacters(QString)), wrk, SLOT(sendCharacters(QString)));
     connect(wrk, SIGNAL(portError(QString)), this, SLOT(portError(QString)));
-    QTimer::singleShot(300, this, SLOT(comboBoxesChanged())); ///< open port based on defaults we had from settings, etc
+    using namespace std::chrono;
+    QTimer::singleShot(300ms, this, SLOT(comboBoxesChanged())); ///< open port based on defaults we had from settings, etc
 }
 
 UARTBox::~UARTBox()

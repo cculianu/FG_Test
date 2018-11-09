@@ -25,11 +25,13 @@ struct Settings
     };
 
     static const std::set<Fmt> EnabledFormats, ///< only the formats in this set are currently supported by the app.
-                               ZipableFormats; ///< 1 file-per-frame formats. foramt in this set may be "zipped" into a single file.
+                               ZipableFormats, ///< 1 file-per-frame formats. foramt in this set may be "zipped" into a single file.
+                               FFmpegFormats;  ///< formats utilizing the FFmpegEncoder class to write to disk.
 
     QString saveDir, savePrefix;
     bool zipEmbed;
     Fmt format;
+    double fps;
     static const Fmt defaultFormat = Fmt_RAW;
 
     struct UART {

@@ -1,5 +1,6 @@
 #include "Settings.h"
 #include "Version.h"
+#include "Frame.h"
 #include <QSettings>
 #include <QTextStream>
 #include <QStandardPaths>
@@ -24,11 +25,15 @@ static const QString fmtPrettyStrings[] =
 };
 
 const std::set<Settings::Fmt> Settings::EnabledFormats = {
-    Fmt_RAW, Fmt_PNG, Fmt_JPG, //Fmt_MJPEG
+    Fmt_RAW, Fmt_PNG, Fmt_JPG, Fmt_FFV1//Fmt_MJPEG
 };
 
 const std::set<Settings::Fmt> Settings::ZipableFormats = {
     Fmt_RAW, Fmt_PNG, Fmt_JPG
+};
+
+const std::set<Settings::Fmt> Settings::FFmpegFormats = {
+    Fmt_FFV1
 };
 
 
@@ -59,6 +64,7 @@ void Settings::load(int scope)
         zipEmbed = s.value("zipEmbed", true).toBool();
         saveDir = s.value("saveDir", QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)).toString();
         savePrefix = s.value("savePrefix", "Recording").toString();
+        fps = s.value("fps", Frame::DefaultFPS()).toDouble();
     }
     if (scope & UART) {
         // uart related
@@ -84,6 +90,7 @@ void Settings::save(int scope)
         s.setValue("saveDir", saveDir);
         s.setValue("savePrefix", savePrefix);
         s.setValue("zipEmbed", zipEmbed);
+        s.setValue("fps", fps);
     }
     if (scope & UART) {
         s.setValue("uart_portName", uart.portName);

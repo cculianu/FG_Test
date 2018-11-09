@@ -27,6 +27,7 @@
 #include <utility>
 #include <math.h>
 #include <atomic>
+#include <chrono>
 #include <stdarg.h>
 
 
@@ -430,8 +431,8 @@ Log::~Log()
         s.flush(); // does nothing probably..
         QString dateStr = QString("[") + QDateTime::currentDateTime().toString("yyyy.MM.dd hh:mm:ss.zzz") + QString("] ");
         QString thrdStr = "";
-        QThread *th = QThread::currentThread();
-        if (th && th != qApp->thread() && !th->objectName().isEmpty())
+
+        if (QThread *th = QThread::currentThread(); th && qApp && th != qApp->thread() && !th->objectName().isEmpty())
             thrdStr = QString::asprintf("<Thread: %s> ", th->objectName().toUtf8().constData());
 
         QString theString = dateStr + thrdStr + str;
@@ -440,7 +441,7 @@ Log::~Log()
             app()->logLine(theString, color);
         } else {
             // just print to console for now..
-            std::cerr << theString.toUtf8().constData() << "\n";
+            std::cerr << theString.toUtf8().constData() << std::endl;
         }
     }
 }
@@ -566,7 +567,7 @@ void Throttler::operator()()
                 tLast = getTimeSecs();
             });
         }
-        t->start(int((period- tDiff)*1e3));
+        t->start(std::chrono::milliseconds(int((period- tDiff)*1e3)));
     } else {
         func();
         tLast = getTimeSecs();

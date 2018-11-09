@@ -11,6 +11,7 @@
 #include <QCheckBox>
 #include <QGridLayout>
 #include <QTimer>
+#include <chrono>
 
 namespace {
     static QString b2s(bool b)  { return  (b ? "ON" : "OFF"); }
@@ -164,6 +165,7 @@ void MainWindow::setupToolBar()
     tbActs["record"] = a = tb->addAction("Recording OFF", this, [this](bool b) {
         if (b && !rec->isRecording()) {
             show_dlg("Recording Starting...");
+            Util::settings().fps = fgen->requestedFPS();
             QString err = rec->start(Util::settings());
             if (!err.isEmpty()) {
                 kill_dlg();
@@ -172,7 +174,8 @@ void MainWindow::setupToolBar()
         } else if (!b && rec->isRecording()) {
             show_dlg("Please Wait...");
             // this makes sure the dialog appears.. on Windows it doesn't show up in time. So we call stop in 10ms giving the dialog time to appear.
-            QTimer::singleShot(10, this, [this]{ rec->stop(); });
+            using namespace std::chrono;
+            QTimer::singleShot(10ms, this, [this]{ rec->stop(); });
         }
         updateToolBar();
     });

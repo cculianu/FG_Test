@@ -36,7 +36,8 @@ SOURCES += \
     SerialPortWorker.cpp \
     Prefs.cpp \
     Frame.cpp \
-    Recorder.cpp
+    Recorder.cpp \
+    FFmpegEncoder.cpp
 
 HEADERS += \
     App.h \
@@ -52,7 +53,8 @@ HEADERS += \
     SerialPortWorker.h \
     Prefs.h \
     Frame.h \
-    Recorder.h
+    Recorder.h \
+    FFmpegEncoder.h
 
 FORMS += \
     MainWindow.ui \

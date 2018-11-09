@@ -351,7 +351,7 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt)
             p->c->gop_size = 1;
             p->c->thread_count = num_threads;
             p->c->thread_type = FF_THREAD_SLICE;
-            p->c->level = 4; p->c->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL; // request version 4 FFV1 Codec...
+            p->c->level = 4; p->c->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL; // request version 4 FFV1 Codec... this means it won't work by default in VLC but works with ffplay :/
 
             // NB: slices= seems to break movie files (frozen frames) for long periods??
             //p->c->slices=9;

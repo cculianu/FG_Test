@@ -18,12 +18,15 @@
 struct Recorder::Pvt
 {
     Pvt(const QString &o, Settings::Fmt f, double fps) : dest(o), format(f) {
+        using namespace std::chrono;
+        auto pollBytesTimer = 333ms;
         if (Settings::FFmpegFormats.count(format)) {
             unsigned n = Util::getNPhysicalProcessors();
             if (n < 1) n = 1;
             pool.setMaxThreadCount(1); // only 1 processing thread. multiple threads happen in the encoder itself.
             isZip = false;
-            ff = new FFmpegEncoder(dest, fps, 0/*int(Frame::DefaultWidth()*Frame::DefaultHeight()*2*8*fps)*/, format, n);
+            ff = new FFmpegEncoder(dest, fps, int(Frame::DefaultWidth()*Frame::DefaultHeight()*2*8*fps), format, n);
+            pollBytesTimer = 1s;
         } else {
             int n = QThread::idealThreadCount()-1;
             if (n < 1) n = 1;
@@ -45,8 +48,7 @@ struct Recorder::Pvt
             const auto bytes = wroteBytes.exchange(0LL);
             perSec.mark(double(bytes)/1e6);
         });
-        using namespace std::chrono;
-        t->start(333ms);
+        t->start(pollBytesTimer);
     }
     ~Pvt() {
         if (zipFile) { if (zipFile->isOpen()) zipFile->close(); delete zipFile; zipFile = nullptr; }
@@ -132,11 +134,15 @@ void Recorder::saveFrame(const Frame &f_in)
         }
         auto r = new LambdaRunnable([this]{
             if (p && p->ff) {
+                quint64 b0 = p->ff->bytesWritten();
                 QString err; qint64 res; int tenc;
                 while ( (res=p->ff->processOneVideoFrame(10,&err,&tenc)) > 0 ) {
+                    auto btmp = p->ff->bytesWritten();
+                    p->wroteBytes += qint64(btmp-b0);
+                    b0 = btmp;
                     Debug() << "Processed frame " << res << " in " << tenc << " ms";
                 }
-                p->wroteBytes += qint64(p->ff->bytesWritten());
+                p->wroteBytes += qint64(p->ff->bytesWritten()-b0);
                 if (res < 0) { Debug() << "Process frame got error: " << err; }
                 else if (res > 0) emit wroteFrame(quint64(res));
             }

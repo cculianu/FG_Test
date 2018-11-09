@@ -351,6 +351,8 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt)
             p->c->gop_size = 1;
             p->c->thread_count = num_threads;
             p->c->thread_type = FF_THREAD_SLICE;
+            p->c->level = 4; p->c->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL; // request version 4 FFV1 Codec...
+
             // NB: slices= seems to break movie files (frozen frames) for long periods??
             //p->c->slices=9;
             break;
@@ -504,6 +506,7 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt)
     plock.unlock();
     plock.lockForRead();
 
+    //qDebug("CODEC CONTEXT VERSION: %d BITS_PER_RAW_SAMPLE: %d", p->c->level, p->c->bits_per_raw_sample);
     return retVal;
 }
 
@@ -583,6 +586,7 @@ bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
                 qDebug("Input image format or dimensions changed in FFmpegEncoder::encode()!");
             }
             conv = new Converter(img.width(), img.height(), img_pix_fmt, codec_pix_fmt);
+            Debug() << "Img format != Codec format; using a converter";
         }
         imgData = nullptr;
         imgYuvData = conv->convert(img, error);
@@ -590,6 +594,8 @@ bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
             if (errMsg) *errMsg = error;
             return false;
         }
+    } else {
+        Debug() << "Img format == Codec format; NOT using a converter";
     }
     if (!p || !p->codec || !p->c || !p->oc || !p->frame || !p->oc->pb) {
         if (!setupP(img.width(), img.height(), codec_pix_fmt)) {
@@ -758,7 +764,7 @@ namespace { // Anonymous
         case QImage::Format_RGB16: return AV_PIX_FMT_BGR565LE;
         case QImage::Format_RGB555: return AV_PIX_FMT_BGR555LE;
         case QImage::Format_RGB888: return AV_PIX_FMT_BGR24;
-        case QImage::Format_RGB444: return AV_PIX_FMT_BGR444LE;
+        case QImage::Format_RGB444: return AV_PIX_FMT_RGB444LE;//AV_PIX_FMT_BGR444LE;
         case QImage::Format_Grayscale8: return AV_PIX_FMT_GRAY8;
 
             // unsupported formats by avcodec

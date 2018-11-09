@@ -87,6 +87,8 @@ App::App(int argc, char **argv)
     debugWin->printSettings(settings);
 
     Log() << applicationDisplayName() << " Started";
+
+    Debug() << "CPUs: " << Util::getNPhysicalProcessors() << " physical, " << Util::getNVirtualProcessors() << " virtual";
 }
 
 App::~App() /* override */

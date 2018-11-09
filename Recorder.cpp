@@ -43,10 +43,10 @@ struct Recorder::Pvt
                 zipFile = new QuaZipFile(zip);
             }
         }
-        QTimer *t = new QTimer(&perSec);
-        connect(t, &QTimer::timeout, &perSec, [this]{
+        QTimer *t = new QTimer(&perSecMB);
+        connect(t, &QTimer::timeout, &perSecMB, [this]{
             const auto bytes = wroteBytes.exchange(0LL);
-            perSec.mark(double(bytes)/1e6);
+            perSecMB.mark(double(bytes)/1e6);
         });
         t->start(pollBytesTimer);
     }
@@ -62,7 +62,7 @@ struct Recorder::Pvt
     QuaZip *zip = nullptr;
     QuaZipFile *zipFile = nullptr;
     QMutex zipMut;
-    PerSec perSec;
+    PerSec perSecMB, perSecFrames;
     std::atomic<qint64> wroteBytes;
 
     FFmpegEncoder *ff = nullptr;
@@ -72,6 +72,7 @@ Recorder::Recorder(QObject *parent) : QObject(parent)
 {
     // this is so our ThreadPool thread can stop recording by posting this signal to the main thread.
     connect(this, SIGNAL(stopLater()), this, SLOT(stop()));
+    connect(this, SIGNAL(wroteFrame(quint64)), this, SLOT(didWriteFrame()));
 }
 
 Recorder::~Recorder()
@@ -108,7 +109,8 @@ QString Recorder::start(const Settings &settings, QString *saveLocation)
     outDir = settings.saveDir + QDir::separator() + outDir;
     p = new Pvt(outDir, settings.format, settings.fps);
     if (saveLocation) *saveLocation = outDir;
-    connect(&p->perSec, SIGNAL(perSec(double)), this, SIGNAL(dataRate(double)));
+    connect(&p->perSecMB, SIGNAL(perSec(double)), this, SIGNAL(dataRate(double)));
+    connect(&p->perSecFrames, SIGNAL(perSec(double)), this, SIGNAL(fps(double)));
     emit started(outDir);
     return QString();
 }
@@ -142,10 +144,10 @@ void Recorder::saveFrame(const Frame &f_in)
                     p->wroteBytes += qint64(btmp-b0);
                     b0 = btmp;
                     Debug() << "Processed frame " << res << " in " << tenc << " ms";
+                    emit wroteFrame(quint64(res));
                 }
                 p->wroteBytes += qint64(p->ff->bytesWritten()-b0);
                 if (res < 0) { Debug() << "Process frame got error: " << err; }
-                else if (res > 0) emit wroteFrame(quint64(res));
             }
         });
         if (!p->pool.tryStart(r)) {
@@ -226,4 +228,9 @@ void Recorder::saveFrame_InAThread(const Frame &f)
         emit stopLater();
         return;
     }
+}
+
+void Recorder::didWriteFrame()
+{
+    if (p) p->perSecFrames.mark();
 }

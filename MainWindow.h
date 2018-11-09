@@ -36,7 +36,7 @@ private:
     Ui::MainWindow *ui;
     FakeFrameGenerator *fgen = nullptr;
 
-    enum StatusString { FPS1 = 0, FPS2, FrameNum, Dropped, FrameNumRec, MBPerSec, Recording, NStatus };
+    enum StatusString { FPS1 = 0, FPS2, FPS3, FrameNum, Dropped, FrameNumRec, MBPerSec, Recording, NStatus };
     QVector<QString> statusStrings = QVector<QString>(NStatus);
 
     Recorder *rec = nullptr;

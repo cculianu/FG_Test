@@ -73,12 +73,18 @@ MainWindow::MainWindow(QWidget *parent) :
         statusStrings[FrameNumRec] = QString("Fr.%1 (saved)").arg(frameNum);
         updateStatusMessageThrottled();
     });
+    connect(rec, &Recorder::fps, this, [this](double fps) {
+        if (!rec->isRecording()) return;
+        statusStrings[FPS3] = QString("%1 FPS (save)").arg(fps, 7, 'g', 3);
+        updateStatusMessageThrottled();
+    });
     connect(rec, &Recorder::stopped, this, [this](){
         kill_dlg();
         statusStrings[Recording] = "";
         statusStrings[FrameNumRec] = "";
         statusStrings[Dropped] = "";
         statusStrings[MBPerSec] = "";
+        statusStrings[FPS3] = "";
         tbActs["record"]->setChecked(false);
         Log() << "Recording stopped.";
         updateToolBar();

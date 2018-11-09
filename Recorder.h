@@ -24,11 +24,14 @@ signals:
     void frameDropped(quint64);
     void stopLater();
     void dataRate(double mbPerSec); ///< emitted periodically to inform calling code about the MB/sec data rate written to disk
+    void fps(double);
 
 public slots:
     void stop();
     void saveFrame(const Frame &);
 
+private slots:
+    void didWriteFrame();
 
 private:
     void saveFrame_InAThread(const Frame &);

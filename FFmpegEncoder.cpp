@@ -55,7 +55,7 @@ namespace {
     {
         std::deque<Frame> frames; ///< buffered video frames.  this list never exceeds maxImgs in size
 
-        static const int maxFrames = 3; ///< max number of video frames to buffer
+        static const int maxFrames = qMax(3,int(Frame::DefaultFPS())); ///< max number of video frames to buffer
 
         QMutex mut; ///< to synchronize access to video frames
         QSemaphore sem; ///< signals video frames are ready.. sem.available() never exceeds maxImgs, and should always equal the imgs size

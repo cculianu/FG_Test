@@ -593,7 +593,9 @@ bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
             Debug() << "Img format != Codec format; using a converter";
         }
         imgData = nullptr;
+        //auto t0 = Util::getTime();
         imgYuvData = conv->convert(img, error);
+        //Debug() << "Conversion took " << (Util::getTime()-t0) << " msec";
         if (!imgYuvData) {
             if (errMsg) *errMsg = error;
             return false;

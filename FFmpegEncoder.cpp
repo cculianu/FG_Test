@@ -72,14 +72,16 @@ namespace {
 
         // deep-copies img
         // always succeeds but returns false if queue was full and old img frames were dropped as a result of enqueue
-        bool enqueue(const Frame & frame) {
+        bool enqueue(const Frame & frame, QString *err = nullptr) {
             bool ret = true;
             QMutexLocker l(&mut);
+            if (err) *err = "";
             if (frames.size() >= maxFrames) {
                 ret = false;
                 const auto fdropped = frames.front().num;
                 frames.pop_front();
-                Debug() << "FFmpegEncoder::enqueue -- queue full, dropping frame " << fdropped;
+                if (err)
+                    *err = QString("FFmpegEncoder::enqueue -- queue full, dropping frame %1").arg(fdropped);
             }
             frames.push_back(frame);
             if (sem.available() < int(frames.size())) {
@@ -665,10 +667,7 @@ bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
 bool FFmpegEncoder::enqueue(const Frame &frame, QString *errMsg)
 {
     QReadLocker rl(&plock);
-    if (errMsg) *errMsg = "";
-    bool res = p->queue->enqueue(frame);
-    if (!res) { /* show in UI or something?? */ }
-    return true;
+    return p->queue->enqueue(frame, errMsg);
 }
 
 qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int *tEncode)

@@ -130,7 +130,8 @@ void Recorder::saveFrame(const Frame &f_in)
         bool ok; QString err;
         ok = p->ff->enqueue(f_in, &err);
         if (!ok) {
-            Warning() << "Failed to enqueue frame " << f_in.num << " error was: " << err;
+            Debug() << err;
+            emit frameDropped(f_in.num);
         }
         auto r = new LambdaRunnable([this]{
             if (p && p->ff) {

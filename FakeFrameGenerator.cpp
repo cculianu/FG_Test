@@ -46,7 +46,7 @@ void FakeFrameGenerator::genFrame()
     QImage img2Send;
 
     if (frames.size() < frames.capacity()) {
-        QImage img(w, h, QImage::Format_RGB444);
+        QImage img(w, h, /*QImage::Format_RGB444*/QImage::Format_ARGB32);
 
         for (int r = 0; r < h; ++r) {
             if (img.format() == QImage::Format_RGB444) {

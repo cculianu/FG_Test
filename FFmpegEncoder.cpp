@@ -366,14 +366,16 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt)
         case AV_CODEC_ID_MJPEG:
             p->c->max_b_frames = 0;
             p->c->gop_size = 1;
-            p->c->thread_count = 1;
-            p->c->thread_type = FF_THREAD_FRAME;
+            //p->c->thread_count = 1; // <-- orig viking
+            //p->c->thread_type = FF_THREAD_FRAME;
+            p->c->thread_count = num_threads;
+            p->c->thread_type = FF_THREAD_SLICE;
             break;
         case AV_CODEC_ID_LJPEG:
             p->c->max_b_frames = 0;
             p->c->gop_size = 1;
             p->c->thread_type = FF_THREAD_FRAME;
-            p->c->thread_count = 1;//num_threads > 2 ? 2 : num_threads;
+            p->c->thread_count = num_threads; // /* orig viking-->*/ 1;//num_threads > 2 ? 2 : num_threads;
             break;
         case AV_CODEC_ID_GIF:
         case AV_CODEC_ID_APNG:
@@ -563,7 +565,7 @@ bool FFmpegEncoder::flushEncoder(QString *errMsg)
                     ++iter_ctr;
                 }
             } while (got_output);
-            qDebug("Did %d extra video 'got_input' iterations...",iter_ctr);
+            Debug("Did %d extra video 'got_input' iterations...",iter_ctr);
         }
     }
     return true;
@@ -596,8 +598,6 @@ bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
             if (errMsg) *errMsg = error;
             return false;
         }
-    } else {
-        Debug() << "Img format == Codec format; NOT using a converter";
     }
     if (!p || !p->codec || !p->c || !p->oc || !p->frame || !p->oc->pb) {
         if (!setupP(img.width(), img.height(), codec_pix_fmt)) {
@@ -736,9 +736,12 @@ namespace { // Anonymous
             return AV_PIX_FMT_RGB24;
             //case AV_CODEC_ID_X:
             //    return AV_PIX_FMT_BGR24;
-        case AV_CODEC_ID_FFV1:
+        /*case AV_CODEC_ID_FFV1:
         case AV_CODEC_ID_LJPEG: // accepts bgr0
-            return AV_PIX_FMT_BGR0;
+            return AV_PIX_FMT_BGR0;*/
+        case AV_CODEC_ID_FFV1: // <-- seems to be much faster when using this pix fmt.
+            return AV_PIX_FMT_YUV420P;
+        case AV_CODEC_ID_LJPEG:  // <--- this works far better with yuvj, speed-wise
         case AV_CODEC_ID_MJPEG:
             return AV_PIX_FMT_YUVJ420P;
         case AV_CODEC_ID_H264:

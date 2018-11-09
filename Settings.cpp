@@ -25,7 +25,7 @@ static const QString fmtPrettyStrings[] =
 };
 
 const std::set<Settings::Fmt> Settings::EnabledFormats = {
-    Fmt_RAW, Fmt_PNG, Fmt_JPG, Fmt_FFV1//Fmt_MJPEG
+    Fmt_RAW, Fmt_PNG, Fmt_JPG, Fmt_FFV1, Fmt_MJPEG, Fmt_LJPEG
 };
 
 const std::set<Settings::Fmt> Settings::ZipableFormats = {
@@ -33,7 +33,7 @@ const std::set<Settings::Fmt> Settings::ZipableFormats = {
 };
 
 const std::set<Settings::Fmt> Settings::FFmpegFormats = {
-    Fmt_FFV1
+    Fmt_FFV1, Fmt_MJPEG, Fmt_LJPEG
 };
 
 
@@ -59,7 +59,7 @@ void Settings::load(int scope)
 //    Debug() << "Settings file: " << s.fileName();
 
     if (scope & Main) {
-        format = string2Fmt(s.value("format",fmt2String(Fmt_RAW)).toString());
+        format = string2Fmt(s.value("format",fmt2String(Fmt_MJPEG)).toString());
         if (!EnabledFormats.count(format)) format = defaultFormat;
         zipEmbed = s.value("zipEmbed", true).toBool();
         saveDir = s.value("saveDir", QStandardPaths::writableLocation(QStandardPaths::MoviesLocation)).toString();

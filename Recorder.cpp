@@ -61,7 +61,7 @@ struct Recorder::Pvt
     bool isZip = false;
     QuaZip *zip = nullptr;
     QuaZipFile *zipFile = nullptr;
-    QMutex zipMut;
+    QMutex mut;
     PerSec perSecMB, perSecFrames;
     std::atomic<qint64> wroteBytes;
 
@@ -97,21 +97,21 @@ QString Recorder::start(const Settings &settings, QString *saveLocation)
     QDir d(settings.saveDir);
     if (!d.exists()) return "Save directory invalid.";
 
-    QString outDir = QString("%1%2")
+    QString dest = QString("%1%2")
             .arg(settings.savePrefix.isEmpty() ? "" : QString("%1_").arg(settings.savePrefix))
             .arg(QDateTime::currentDateTime().toString("yyMMdd_HHmmss"));
-    if (Settings::FFmpegFormats.count(settings.format)) outDir += ".avi";
-    else if (settings.zipEmbed) outDir += ".zip";
+    if (Settings::FFmpegFormats.count(settings.format)) dest += ".avi";
+    else if (settings.zipEmbed) dest += ".zip";
     else {
-        if (!d.mkdir(QString(outDir)))
+        if (!d.mkdir(QString(dest)))
             return "Error creating output directory.";
     }
-    outDir = settings.saveDir + QDir::separator() + outDir;
-    p = new Pvt(outDir, settings.format, settings.fps);
-    if (saveLocation) *saveLocation = outDir;
+    dest = settings.saveDir + QDir::separator() + dest;
+    p = new Pvt(dest, settings.format, settings.fps);
+    if (saveLocation) *saveLocation = dest;
     connect(&p->perSecMB, SIGNAL(perSec(double)), this, SIGNAL(dataRate(double)));
     connect(&p->perSecFrames, SIGNAL(perSec(double)), this, SIGNAL(fps(double)));
-    emit started(outDir);
+    emit started(dest);
     return QString();
 }
 
@@ -207,7 +207,7 @@ void Recorder::saveFrame_InAThread(const Frame &f)
         if (p->isZip) {
             QuaZipNewInfo inf(fname);
             inf.setPermissions(QFile::Permissions(0x6666));
-            QMutexLocker ml(&p->zipMut); // only 1 thread at a time can modify the QuaZipFile object...
+            QMutexLocker ml(&p->mut); // only 1 thread at a time can modify the QuaZipFile object...
             if (!p->zipFile->open(QuaZipFile::WriteOnly|QuaZipFile::NewOnly, inf, nullptr, 0, Z_DEFLATED, Z_NO_COMPRESSION)) {
                 throw Err{p->zipFile->errorString()};
             }

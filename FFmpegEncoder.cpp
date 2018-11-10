@@ -30,11 +30,12 @@ extern "C" {
 #include <atomic>
 #include <deque>
 
-//#ifdef __GNUC__
-//#pragma GCC diagnostic push
+#ifdef __GNUC__
+#pragma GCC diagnostic push
 //#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-//#pragma GCC diagnostic ignored "-Wpadded"
-//#endif
+#pragma GCC diagnostic ignored "-Wpadded" // TODO: find out why new clang issues these annoying useless warnings...!
+#pragma GCC diagnostic ignored "-Wold-style-cast" /* FFmpeg macros use C-style casts, so we want to ignore these warnings. */
+#endif
 
 namespace {
 
@@ -67,7 +68,7 @@ namespace {
             bool ret = true;
             QMutexLocker l(&mut);
             if (err) *err = "";
-            if (frames.size() >= maxFrames) {
+            while (frames.size() >= maxFrames) {
                 ret = false;
                 const auto fdropped = frames.front().num;
                 frames.pop_front();
@@ -79,6 +80,12 @@ namespace {
                 sem.release(int(frames.size()) - sem.available());
             }
             return ret;
+        }
+
+        void putBackFrame(const Frame &frame) {
+            // unconditionally put back a frame because FFmpeg gave us EGAIN when we tried to process it.
+            // This frame will be possibly cleaned up if enqueue() is called again in the near future and the queue is full.
+            frames.push_front(frame);
         }
 
         // returns a non-null frame if we have an actual img frame. If no frame was available, the returned frame is null.
@@ -535,44 +542,58 @@ bool FFmpegEncoder::flushEncoder(QString *errMsg)
         if (p->c->codec->capabilities & AV_CODEC_CAP_DELAY) {
             Debug("Flushing delayed video frames...");
             // delayed frames.. get and save
-            int iter_ctr = 0, got_output = 0, res;
-            do {
-                av_init_packet(&p->pkt);
-                p->pkt.data = nullptr;
-                p->pkt.size = 0;
-                p->pkt.pts = p->last_pts+1;
-                p->pkt.dts = p->pkt.pts;
-                p->pkt.duration = 0;
+            int iter_ctr = 0, res = 0;
 
-                res = avcodec_encode_video2(p->c, &p->pkt, nullptr, &got_output);
-                if (res < 0) {
-                    if (errMsg) *errMsg = "Error encoding frame";
-                    return false;
-                }
+            // indicate end by sending null frame
+            res = avcodec_send_frame(p->c, nullptr);
 
-                p->pkt.pts = p->last_pts+1;
-                p->pkt.dts = p->pkt.pts;
-                p->last_pts = p->pkt.pts;
+            if (res == AVERROR(EAGAIN)) res = 0;
+            else if (res < 0) {
+                if (errMsg) *errMsg = "Error flushing stream";
+                return false;
+            }
 
-                if (got_output) {
-                    if (write_frame(p->oc, &p->c->time_base, p->video_st, &p->pkt)) { // this automatically unreferences the packet
+            // now loop until no more packets are read
+            while (0 == res)
+            {
+                    av_init_packet(&p->pkt);
+                    // is the below needed?!?!
+                    p->pkt.data = nullptr;
+                    p->pkt.size = 0;
+                    p->pkt.pts = p->last_pts+1;
+                    p->pkt.dts = p->pkt.pts;
+                    p->pkt.duration = 0;
+                    p->pkt.pts = p->last_pts+1;
+                    p->pkt.dts = p->pkt.pts;
+                    p->last_pts = p->pkt.pts;
+                    // TODO: see about removing the above...
+
+                    // this normally returns 0 until end of stream, then it returns AFERROR_EOF
+                    res = avcodec_receive_packet(p->c, &p->pkt);
+
+                    if (0 == res)
+                        // if we got a packet, write it to file
+                        res = write_frame(p->oc, &p->c->time_base, p->video_st,
+                                          &p->pkt); // this automatically unreferences the packet
+
+                    if (res && res != AVERROR_EOF) {
+                        // res != 0 and res != AVERROR_EOF means we got some error above...
                         if (errMsg) {
-                            *errMsg = "Error from  inner write_frame()";
+                            *errMsg = "Error from inner write_frame()";
                             if (p->oc && p->oc->pb && p->oc->pb->error)
                                 *errMsg += QString(": ") + strerror(abs(p->oc->pb->error));
                         }
                         return false;
                     }
                     ++iter_ctr;
-                }
-            } while (got_output);
-            Debug("Did %d extra video 'got_input' iterations...",iter_ctr);
+            }
+            Debug("Did %d extra video 'receive_packet' iterations...",iter_ctr);
         }
     }
     return true;
 }
 
-bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
+int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
 {
     const QImage & img(frame.img);
     const uchar *imgData (img.bits());
@@ -599,18 +620,18 @@ bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
         //Debug() << "Conversion took " << (Util::getTime()-t0) << " msec";
         if (!imgYuvData) {
             if (errMsg) *errMsg = error;
-            return false;
+            return -1;
         }
     }
     if (!p || !p->codec || !p->c || !p->oc || !p->frame || !p->oc->pb) {
         if (!setupP(img.width(), img.height(), codec_pix_fmt)) {
             if (errMsg) *errMsg = error;
-            return false;
+            return -1;
         }
     }
     if (p->c->width != img.width()) {
         if (errMsg) *errMsg = "Unexpected image size change: Did you resize the screen?";
-        return false;
+        return -1;
     }
 
     if (p->firstFrameNum < 0LL) p->firstFrameNum = qint64(frame.num); // remember "first frame" number seen for proper pts below...
@@ -619,18 +640,7 @@ bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
     av_init_packet(&p->pkt);
     p->pkt.data = nullptr;
     p->pkt.size = 0;
-    p->frame->pts = fnum;
-
-    p->framesProcessed++;
-
-    //p->pkt.pts = AV_NOPTS_VALUE;
-    //p->pkt.dts = p->frame->pts;
-    p->pkt.pts = p->frame->pts; // is this needed?
-    p->pkt.dts = p->pkt.pts; //p->last_pts ? p->last_pts : 0;
-    p->last_pts = p->pkt.pts;
-    p->pkt.duration = 0; // unknown duration ok?
-
-    int got_output = 0, res;
+    p->last_pts = p->frame->pts = fnum;
 
     if (imgYuvData) {
         memcpy(p->frame->data, imgYuvData->data, sizeof(p->frame->data));
@@ -639,32 +649,38 @@ bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
         p->frame->data[0] = const_cast<uchar *>(imgData);
         p->frame->linesize[0] = img.bytesPerLine();
     }
-    res = avcodec_encode_video2(p->c, &p->pkt, p->frame, &got_output);
+    int res = avcodec_send_frame(p->c, p->frame);
 
-    p->frame->data[0] = nullptr; // ensure we no longer point to data that will soon go away..
-    p->frame->linesize[0] = 0;
+    // ensure we no longer point to data that will soon go away..
+    memset(p->frame->data, 0, sizeof(p->frame->data));
+    memset(p->frame->linesize, 0, sizeof(p->frame->linesize));
 
-    if (res < 0) {
+    int retVal = 1;
+
+    if (AVERROR(EAGAIN) == res) {
+        // new API: avcodec_send_frame() may return EAGAIN when its buffers are full.
+        // indicate this to calling code to re-enqueue the frame later. Then proceed to read packets
+        // off codec and save them to disk.
+        retVal = 0;
+    } else if (res < 0) {
+        // new API same as old here -- negative return that is NOT EAGAIN means error.
         if (errMsg) *errMsg = "Error encoding frame";
-        return false;
-    }
-    if (got_output) {
-        p->pkt.pts = p->frame->pts; // redundant?!
-        p->pkt.dts = p->pkt.pts;
-        p->pkt.duration = 0;
+        return -1;
+    } else
+        p->framesProcessed++;
+
+    while ((res = avcodec_receive_packet(p->c, &p->pkt)) == 0) {
         if (write_frame(p->oc, &p->c->time_base, p->video_st, &p->pkt)) { // this automatically unreferences the packet
             if (errMsg) {
                 *errMsg = "Error #11: Could not write frame";
                 if (p->oc && p->oc->pb && p->oc->pb->error)
                     *errMsg += QString(": ") + strerror(abs(p->oc->pb->error));
             }
-            return false;
+            return -1;
         }
-        // todo maybe call flushEncoder() here? I called it and on some encoders it breaks..
-        // todo2: see about looping until got_output = 0? (not sure if that's needed: do research!)
     }
 
-    return true;
+    return retVal;
 }
 
 bool FFmpegEncoder::enqueue(const Frame &frame, QString *errMsg)
@@ -677,34 +693,39 @@ qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int 
 {
     using Util::getTime;
 
-    qint64 t0 = getTime(), t1=t0, t2=t0, t3 = t0;
+    qint64 t0 = getTime(), t1=t0, t2=t0/*, t3 = t0*/;
     if (errMsg) *errMsg = "";
     if (tEncode) *tEncode = 0;
     Q & q = *p->queue;
     qint64 retVal = 0;
-    bool res = true;
+    int res = 0;
 
     Frame frame = q.dequeueOneFrame(timeout_ms);
     t1 = getTime();
 //    if (res) qDebug("dequeue got img frame %llu (%d x %d)", frame.num, frame.img.width(), frame.img.height());
     if (!frame.isNull()) {
         res = encode(frame, errMsg);
+        if (res == 0) {
+            // got EAGAIN from avcodec
+            Debug() << "Got EAGAIN from avcodec_send_frame, re-enqueing frame...";
+            q.putBackFrame(frame);
+            return 0;
+        }
         p->lastfNumProcd = frame.num;
-        retVal = res ? qint64(frame.num) : -1;
+        retVal = res > 0 ? qint64(frame.num) : -1;
     } else {
-        res = true;
-        retVal = 0;
+        return 0;
     }
     t2 = getTime();
 
-    if (!res) {
+    if (res < 0) {
         if (errMsg && errMsg->isEmpty()) *errMsg = "Error writing data.";
         retVal = -1;
     }
 
-    t3 = getTime();
+    //t3 = getTime();
 
-    if (res) {
+    if (res > 0) {
         if (tEncode) *tEncode = int(t2-t1);
         //qDebug("frame %u (%d x %d, %u audio streams) took %lld ms waiting for a frame, %lld ms to encode, and %lld ms to encode %u audio frames, (%lld ms total encoding time), %lld ms total time",
         //       fNum, imgW, imgH, aqSize, t1-t0, t2-t1, t3-t2, nAudioFrames, t3-t1, getTime()-t0);
@@ -794,6 +815,6 @@ namespace { // Anonymous
 
 } // end anonymous namespace
 
-//#ifdef __GNUC__
-//#pragma GCC diagnostic pop
-//#endif
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif

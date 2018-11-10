@@ -120,10 +120,8 @@ struct FFmpegEncoder::Priv {
     AVFrame *frame = nullptr;
     AVPacket pkt;
     unsigned framesProcessed = 0; ///< used to determine if we need to flush encoder
-    int64_t last_pts = 0LL;
     AVPixelFormat codec_pix_fmt = AV_PIX_FMT_NONE;
 
-    std::atomic<quint64> lastfNumProcd = 0;
     qint64 firstFrameNum = -1;
 
     Q *queue = nullptr;
@@ -254,6 +252,7 @@ FFmpegEncoder::~FFmpegEncoder()
 FFmpegEncoder::Priv::Priv()
 {
     memset(&pkt, 0, sizeof(pkt));
+    av_init_packet(&pkt);
 }
 
 FFmpegEncoder::Priv::~Priv()
@@ -556,25 +555,13 @@ bool FFmpegEncoder::flushEncoder(QString *errMsg)
             // now loop until no more packets are read
             while (0 == res)
             {
-                    av_init_packet(&p->pkt);
-                    // is the below needed?!?!
-                    p->pkt.data = nullptr;
-                    p->pkt.size = 0;
-                    p->pkt.pts = p->last_pts+1;
-                    p->pkt.dts = p->pkt.pts;
-                    p->pkt.duration = 0;
-                    p->pkt.pts = p->last_pts+1;
-                    p->pkt.dts = p->pkt.pts;
-                    p->last_pts = p->pkt.pts;
-                    // TODO: see about removing the above...
-
                     // this normally returns 0 until end of stream, then it returns AFERROR_EOF
                     res = avcodec_receive_packet(p->c, &p->pkt);
 
                     if (0 == res)
                         // if we got a packet, write it to file
                         res = write_frame(p->oc, &p->c->time_base, p->video_st,
-                                          &p->pkt); // this automatically unreferences the packet
+                                          &p->pkt); // this automatically unreferences and clears the packet
 
                     if (res && res != AVERROR_EOF) {
                         // res != 0 and res != AVERROR_EOF means we got some error above...
@@ -637,10 +624,7 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
     if (p->firstFrameNum < 0LL) p->firstFrameNum = qint64(frame.num); // remember "first frame" number seen for proper pts below...
     const qint64 fnum = qint64(frame.num) - p->firstFrameNum; // this is really an offset from start of recording
 
-    av_init_packet(&p->pkt);
-    p->pkt.data = nullptr;
-    p->pkt.size = 0;
-    p->last_pts = p->frame->pts = fnum;
+    p->frame->pts = fnum;
 
     if (imgYuvData) {
         memcpy(p->frame->data, imgYuvData->data, sizeof(p->frame->data));
@@ -670,7 +654,7 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
         p->framesProcessed++;
 
     while ((res = avcodec_receive_packet(p->c, &p->pkt)) == 0) {
-        if (write_frame(p->oc, &p->c->time_base, p->video_st, &p->pkt)) { // this automatically unreferences the packet
+        if (write_frame(p->oc, &p->c->time_base, p->video_st, &p->pkt)) { // this automatically unreferences and inits the packet
             if (errMsg) {
                 *errMsg = "Error #11: Could not write frame";
                 if (p->oc && p->oc->pb && p->oc->pb->error)
@@ -678,7 +662,6 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
             }
             return -1;
         }
-        av_init_packet(&p->pkt); // clear out packet if we re-use it next iteration
     }
 
     return retVal;
@@ -712,7 +695,6 @@ qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int 
             q.putBackFrame(frame);
             return 0;
         }
-        p->lastfNumProcd = frame.num;
         retVal = res > 0 ? qint64(frame.num) : -1;
     } else {
         return 0;

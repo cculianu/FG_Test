@@ -533,7 +533,7 @@ bool FFmpegEncoder::flushEncoder(QString *errMsg)
 {
     if (p && p->framesProcessed && p->c && p->oc && p->video_st && p->oc->pb && !p->oc->pb->error) {
         if (p->c->codec->capabilities & AV_CODEC_CAP_DELAY) {
-            qDebug("Flushing delayed video frames...");
+            Debug("Flushing delayed video frames...");
             // delayed frames.. get and save
             int iter_ctr = 0, got_output = 0, res;
             do {

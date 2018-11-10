@@ -432,8 +432,11 @@ Log::~Log()
         QString dateStr = QString("[") + QDateTime::currentDateTime().toString("yyyy.MM.dd hh:mm:ss.zzz") + QString("] ");
         QString thrdStr = "";
 
-        if (QThread *th = QThread::currentThread(); th && qApp && th != qApp->thread() && !th->objectName().isEmpty())
-            thrdStr = QString::asprintf("<Thread: %s> ", th->objectName().toUtf8().constData());
+        if (QThread *th = QThread::currentThread(); th && qApp && th != qApp->thread()) {
+            QString thrdName = th->objectName();
+            if (thrdName.trimmed().isEmpty()) thrdName = QString::asprintf("%lx", reinterpret_cast<long>(QThread::currentThreadId()));
+            thrdStr = QString("<Thread: %1> ").arg(thrdName);
+        }
 
         QString theString = dateStr + thrdStr + str;
 

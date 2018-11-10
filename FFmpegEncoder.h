@@ -39,7 +39,8 @@ private:
 
     QString outFile;
     double fps = 0.0;
-    int bitrate=0,fmt=0,num_threads=0;
+    int64_t bitrate=0;
+    int fmt=0,num_threads=0;
 
     QString error;
 };

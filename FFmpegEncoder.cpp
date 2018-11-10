@@ -30,22 +30,13 @@ extern "C" {
 #include <atomic>
 #include <deque>
 
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#pragma GCC diagnostic ignored "-Wpadded"
-#endif
+//#ifdef __GNUC__
+//#pragma GCC diagnostic push
+//#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+//#pragma GCC diagnostic ignored "-Wpadded"
+//#endif
 
 namespace {
-    bool doAvCodecInit() {
-        avcodec_register_all();
-        avfilter_register_all();
-        av_register_all();
-
-        return true;
-    }
-
-    const bool avcodecIsInitted = doAvCodecInit();
 
     AVPixelFormat pixelFormatForCodecId(AVCodecID codec);
     AVPixelFormat qimgfmt2avcodecfmt(QImage::Format fmt);
@@ -136,16 +127,22 @@ struct FFmpegEncoder::Priv {
     ~Priv();
 };
 
+/// this is a work-alike to AVPicture. AVPicture itself was deprecated.
+struct Picture {
+    uint8_t *data[AV_NUM_DATA_POINTERS];    ///< pointers to the image data planes
+    int linesize[AV_NUM_DATA_POINTERS];     ///< number of bytes per line
+    Picture() { memset(data, 0, sizeof(data)); memset(linesize, 0, sizeof(linesize)); }
+};
 
 struct FFmpegEncoder::Converter {
-    AVPicture inpic, outpic;
+    Picture inpic, outpic;
     bool avPictureOk = false;
     int w=0, h=0; ///< width,height of the incoming image
     AVPixelFormat av_pix_fmt_in; ///< the format of the incoming QImages.. usually RGB0
     AVPixelFormat av_pix_fmt_out;
     SwsContext *ctx = nullptr;
 
-    const AVPicture *convert(const QImage &, QString &errMsg);
+    const Picture *convert(const QImage &, QString &errMsg);
 
     ~Converter();
     Converter(int w, int h, AVPixelFormat src_fmt, AVPixelFormat dest_fmt);
@@ -184,7 +181,7 @@ FFmpegEncoder::Converter::Converter(int width, int height, AVPixelFormat pxfmt_i
 
 }
 
-const AVPicture *
+const Picture *
 FFmpegEncoder::Converter::convert(const QImage &img, QString & errMsg)
 {
     if (!ctx || !avPictureOk) {
@@ -197,11 +194,17 @@ FFmpegEncoder::Converter::convert(const QImage &img, QString & errMsg)
     }
 
     // NB: this does a shallow copy -- just fills pointers to image planes...
-    avpicture_fill(&inpic,
-                   img.bits(),
-                   av_pix_fmt_in,
-                   w,
-                   h);
+    if (int size = av_image_fill_arrays(inpic.data,
+                                        inpic.linesize,
+                                        img.bits(),
+                                        av_pix_fmt_in, w, h, 32 /* align=32 */);
+            size < 0) {
+        errMsg = QString("av_image_fill_arrays returned %1").arg(size);
+        return nullptr;
+    } else if (size > img.bytesPerLine()*h) {
+        errMsg = "av_image_fill_arrays size is greater than img size in bytes!";
+        return nullptr;
+    }
 
     inpic.linesize[0] = img.bytesPerLine();
 
@@ -393,7 +396,8 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt)
        //       || codec_id == AV_CODEC_ID_MJPEG) && fps >= 5.0) p->c->gop_size = 3;
 
         if (codec_id == AV_CODEC_ID_JPEG2000)
-            p->c->prediction_method = 1; // set to lossless?
+            //p->c->prediction_method = 1; // set to lossless?
+            av_opt_set_int(p->c->priv_data, "pred", 1, 0); // settings pred=1 sets it to lossless
 
         p->c->pix_fmt = p->codec_pix_fmt;
 
@@ -575,7 +579,7 @@ bool FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
 {
     const QImage & img(frame.img);
     const uchar *imgData (img.bits());
-    const AVPicture *imgYuvData = nullptr;
+    const Picture *imgYuvData = nullptr;
     AVPixelFormat img_pix_fmt = qimgfmt2avcodecfmt(img.format());
 //    qDebug("img_pix_fmt is %d", img_pix_fmt);
     AVPixelFormat codec_pix_fmt = pixelFormatForCodecId(fmt2CodecId(fmt));
@@ -741,9 +745,10 @@ namespace { // Anonymous
         /*case AV_CODEC_ID_FFV1:
         case AV_CODEC_ID_LJPEG: // accepts bgr0
             return AV_PIX_FMT_BGR0;*/
-        case AV_CODEC_ID_FFV1: // <-- seems to be much faster when using this pix fmt.
+            //return AV_PIX_FMT_BGRA;
+        case AV_CODEC_ID_FFV1: // <-- seems to be faster when using this pix fmt.
             return AV_PIX_FMT_YUV420P;
-        case AV_CODEC_ID_LJPEG:  // <--- this works far better with yuvj, speed-wise
+        case AV_CODEC_ID_LJPEG: // <--- MUCH faster when using yuvj420p
         case AV_CODEC_ID_MJPEG:
             return AV_PIX_FMT_YUVJ420P;
         case AV_CODEC_ID_H264:
@@ -792,6 +797,6 @@ namespace { // Anonymous
 
 } // end anonymous namespace
 
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+//#ifdef __GNUC__
+//#pragma GCC diagnostic pop
+//#endif

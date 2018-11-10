@@ -147,7 +147,11 @@ void Recorder::saveFrame(const Frame &f_in)
                     emit wroteFrame(quint64(res));
                 }
                 p->wroteBytes += qint64(p->ff->bytesWritten()-b0);
-                if (res < 0) { Debug() << "Process frame got error: " << err; }
+                if (res < 0) {
+                    Error() << "Process frame got error: " << err;
+                    emit error(err);
+                    emit stopLater();
+                }
             }
         });
         if (!p->pool.tryStart(r)) {

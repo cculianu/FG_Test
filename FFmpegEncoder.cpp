@@ -162,11 +162,10 @@ FFmpegEncoder::Converter::Converter(int width, int height, AVPixelFormat pxfmt_i
     w = width; h = height;
     av_pix_fmt_in = pxfmt_in;
     av_pix_fmt_out = pxfmt_out;
-    memset(&inpic, 0, sizeof(inpic));
-    memset(&outpic,0,sizeof(outpic));
     avPictureOk = av_image_alloc(outpic.data, outpic.linesize, w, h, av_pix_fmt_out, 32 /*force 32-byte alignment good for all codecs*/) > 0;
     if (!avPictureOk) {
-        Debug("FFmpegEncoder::Could not allocate output picture buffer!");
+        Error("FFmpegEncoder::Could not allocate output picture buffer!");
+        return;
     }
     //create the conversion context.  you only need to do this once if
     //you are going to do the same conversion multiple times.
@@ -205,8 +204,6 @@ FFmpegEncoder::Converter::convert(const QImage &img, QString & errMsg)
         errMsg = "av_image_fill_arrays size is greater than img size in bytes!";
         return nullptr;
     }
-
-    inpic.linesize[0] = img.bytesPerLine();
 
     //perform the conversion
     sws_scale(ctx,

@@ -678,6 +678,7 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
             }
             return -1;
         }
+        av_init_packet(&p->pkt); // clear out packet if we re-use it next iteration
     }
 
     return retVal;

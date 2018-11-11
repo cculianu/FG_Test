@@ -339,6 +339,49 @@ FFmpegEncoder::Priv::~Priv()
 //    Debug("Priv deleted.");
 }
 
+bool FFmpegEncoder::enqueue(const Frame &frame, QString *errMsg)
+{
+    return p->queue->enqueue(frame, errMsg);
+}
+
+qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int *tEncode)
+{
+    using Util::getTime;
+
+    qint64 t0 = getTime(), t1=t0, t2=t0;
+    if (errMsg) *errMsg = "";
+    if (tEncode) *tEncode = 0;
+    Q & q = *p->queue;
+    qint64 retVal = 0;
+    int res = 0;
+
+    Frame frame = q.dequeueOneFrame(timeout_ms);
+    t1 = getTime();
+    if (!frame.isNull()) {
+        //    if (res) qDebug("dequeue got img frame %llu (%d x %d)", frame.num, frame.img.width(), frame.img.height());
+        res = encode(frame, errMsg);
+        if (res == 0) {
+            // got EAGAIN from avcodec
+            Debug() << "Got EAGAIN from avcodec_send_frame, re-enqueing frame...";
+            q.putBackFrame(std::move(frame));
+            return 0;
+        }
+        retVal = res > 0 ? qint64(frame.num) : -1;
+    } else {
+        return 0;
+    }
+    t2 = getTime();
+
+    if (res < 0) {
+        if (errMsg && errMsg->isEmpty()) *errMsg = "Error writing data.";
+        retVal = -1;
+    } else if (res > 0) {
+        if (tEncode) *tEncode = int(t2-t1);
+        //qDebug("frame %llu (%d x %d) took %lld ms waiting for a frame, %lld ms to encode",
+        //       frame.num, frame.img.width(), frame.img.height(), t1-t0, t2-t1);
+    }
+    return retVal;
+}
 
 quint64 FFmpegEncoder::bytesWritten() const
 {
@@ -693,49 +736,6 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
     return retVal;
 }
 
-bool FFmpegEncoder::enqueue(const Frame &frame, QString *errMsg)
-{
-    return p->queue->enqueue(frame, errMsg);
-}
-
-qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int *tEncode)
-{
-    using Util::getTime;
-
-    qint64 t0 = getTime(), t1=t0, t2=t0;
-    if (errMsg) *errMsg = "";
-    if (tEncode) *tEncode = 0;
-    Q & q = *p->queue;
-    qint64 retVal = 0;
-    int res = 0;
-
-    Frame frame = q.dequeueOneFrame(timeout_ms);
-    t1 = getTime();
-    if (!frame.isNull()) {
-        //    if (res) qDebug("dequeue got img frame %llu (%d x %d)", frame.num, frame.img.width(), frame.img.height());
-        res = encode(frame, errMsg);
-        if (res == 0) {
-            // got EAGAIN from avcodec
-            Debug() << "Got EAGAIN from avcodec_send_frame, re-enqueing frame...";
-            q.putBackFrame(std::move(frame));
-            return 0;
-        }
-        retVal = res > 0 ? qint64(frame.num) : -1;
-    } else {
-        return 0;
-    }
-    t2 = getTime();
-
-    if (res < 0) {
-        if (errMsg && errMsg->isEmpty()) *errMsg = "Error writing data.";
-        retVal = -1;
-    } else if (res > 0) {
-        if (tEncode) *tEncode = int(t2-t1);
-        //qDebug("frame %llu (%d x %d) took %lld ms waiting for a frame, %lld ms to encode",
-        //       frame.num, frame.img.width(), frame.img.height(), t1-t0, t2-t1);
-    }
-    return retVal;
-}
 
 namespace { // Anonymous
 

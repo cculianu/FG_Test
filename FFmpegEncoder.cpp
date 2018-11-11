@@ -45,7 +45,7 @@ namespace {
 
     struct Q
     {
-        std::deque<Frame> frames; ///< buffered video frames.  this list never exceeds maxImgs in size. guarded but mut below.
+        std::deque<Frame> frames; ///< buffered video frames.  this list never exceeds maxImgs in size. guarded by mut below.
 
         static const int maxFrames = qMax(3,int(Frame::DefaultFPS())); ///< max number of video frames to buffer: 1 second worth of frames or 3 minimum.
 

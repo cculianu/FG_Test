@@ -82,11 +82,11 @@ namespace {
             return ret;
         }
 
-        void putBackFrame(const Frame &frame) {
+        void putBackFrame(Frame &&frame) {
             // unconditionally put back a frame because FFmpeg gave us EGAIN when we tried to process it.
             // This frame will be possibly cleaned up if enqueue() is called again in the near future and the queue is full.
             QMutexLocker l(&mut);
-            frames.push_front(frame);
+            frames.push_front(std::move(frame));
         }
 
         // returns a non-null frame if we have an actual img frame. If no frame was available, the returned frame is null.
@@ -100,7 +100,7 @@ namespace {
                     // sem is available but imgs.isEmpty().  I am not sure *why* this would ever happen with
                     // exactly 1 reader and 1 writer -- but it lead to crashes.  So we need this redundant
                     // check..
-                    frame = frames.front();
+                    frame = std::move(frames.front());
                     frames.pop_front();
                 }
             }
@@ -719,7 +719,7 @@ qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int 
         if (res == 0) {
             // got EAGAIN from avcodec
             Debug() << "Got EAGAIN from avcodec_send_frame, re-enqueing frame...";
-            q.putBackFrame(frame);
+            q.putBackFrame(std::move(frame));
             return 0;
         }
         retVal = res > 0 ? qint64(frame.num) : -1;

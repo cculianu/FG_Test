@@ -9,13 +9,14 @@ extern int FrameTypeId;
 int FrameTypeId = qRegisterMetaType<Frame>(); ///< make sure Frame can be used in signals/slots
 
 
-Frame::Frame(const Frame &other) {  *this = other; }
-Frame::Frame(Frame &&o) { *this = std::move(o);  }
+Frame::Frame(const Frame &other) { /*qDebug("copy c'tor");*/ *this = other; }
+Frame::Frame(Frame &&o) { /*qDebug("move c'tor");*/ *this = std::move(o);  }
 
 Frame::~Frame() { destruct(); }
 
 Frame &Frame::operator=(const Frame &o)
 {
+    //qDebug("copy assign");
     img = o.img;
     num = o.num;
     destroyAVFrame();
@@ -27,6 +28,7 @@ Frame &Frame::operator=(const Frame &o)
 Frame &
 Frame::operator=(Frame &&o)
 {
+    //qDebug("move assign");
     if (this != &o) {
         img = std::move(o.img);
         num = o.num;

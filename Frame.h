@@ -20,6 +20,7 @@ struct Frame
 
     Frame(const Frame &other);
     Frame(Frame &&other);
+
     ~Frame(); ///< cleans up all resources, including avframe
 
     Frame &operator=(const Frame &); // copy assign
@@ -28,15 +29,15 @@ struct Frame
     bool isNull() const { return img.isNull(); }
     void nullify() { img = QImage(); } ///< cleans up just the image. avframe is left alone.
 
-    ///< Convenience function: cleans up just the avframe, setting it to nullptr and freeing its resources and unreferencing any referenced buffers
-    void destroyAVFrame() { destruct(true); }
+    /// Convenience function: cleans up just the avframe, setting it to nullptr and freeing its resources and unreferencing any referenced buffers
+    void destroyAVFrame();
 
     static constexpr double DefaultFPS() { return 10.0; }
     static constexpr int DefaultWidth() { return 5056; }
     static constexpr int DefaultHeight() { return 2968; }
 
 private:
-    void destruct(bool justavframe = false);
+    void destruct();
 };
 
 Q_DECLARE_METATYPE(Frame);

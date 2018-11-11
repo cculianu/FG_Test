@@ -16,9 +16,9 @@ Frame::~Frame() { destruct(); }
 
 Frame &Frame::operator=(const Frame &o)
 {
-    destruct(true);
     img = o.img;
     num = o.num;
+    destroyAVFrame();
     if (o.avframe)
         avframe = av_frame_clone(o.avframe);
     return *this;
@@ -30,8 +30,7 @@ Frame::operator=(Frame &&o)
     if (this != &o) {
         img = std::move(o.img);
         num = o.num;
-        if (avframe)
-            destruct(true);
+        destroyAVFrame();
         avframe = o.avframe;
         o.avframe = nullptr;
         o.destruct();
@@ -39,14 +38,14 @@ Frame::operator=(Frame &&o)
     return *this;
 }
 
-void Frame::destruct(bool b)
+void Frame::destruct()
 {
-    if (!b) {
-        img = QImage();
-        num = 0;
-    }
-    av_frame_free(&avframe);
+    img = QImage();
+    num = 0;
+    destroyAVFrame();
 }
+
+void Frame::destroyAVFrame() { av_frame_free(&avframe); /* <-- implicitly nulls pointer. passing-in &(NULL) is ok */ }
 
 
 

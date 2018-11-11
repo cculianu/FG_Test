@@ -94,7 +94,7 @@ namespace {
         Frame dequeueOneFrame(int timeout_ms) {
             Frame frame;
 
-            if (bool ok = sem.tryAcquire(1,timeout_ms); ok) { // todo: check for race condition here?
+            if (sem.tryAcquire(1,timeout_ms)) { // todo: check for race condition here?
                 QMutexLocker l(&mut);
                 if (!frames.empty()) {
                     // there appears to be a race condition here where sometimes we get signalled that the

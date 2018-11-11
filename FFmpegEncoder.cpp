@@ -39,6 +39,8 @@ extern "C" {
 
 namespace {
 
+    struct Converter;
+
     AVPixelFormat pixelFormatForCodecId(AVCodecID codec);
     AVPixelFormat qimgfmt2avcodecfmt(QImage::Format fmt);
     AVCodecID fmt2CodecId(int fmtFromSettingsClass);
@@ -124,6 +126,7 @@ struct FFmpegEncoder::Priv {
     qint64 firstFrameNum = -1; ///< used to calculate frame->pts
 
     Q *queue = nullptr;
+    Converter *conv = nullptr;
 
     bool wroteHeader = false;
 
@@ -131,8 +134,8 @@ struct FFmpegEncoder::Priv {
     ~Priv();
 };
 
-
-struct FFmpegEncoder::Converter {
+namespace {
+struct Converter {
     /// this is a work-alike to AVPicture. AVPicture itself was deprecated.
     struct Picture {
         uint8_t *data[AV_NUM_DATA_POINTERS];    ///< pointers to the image data planes
@@ -162,12 +165,12 @@ private:
     AVFrame *trivial(const QImage &, QString &errMsg);
 };
 
-FFmpegEncoder::Converter::~Converter()
+Converter::~Converter()
 {
     if (ctx) { sws_freeContext(ctx); ctx = nullptr; }
 }
 
-FFmpegEncoder::Converter::Converter(int width, int height, AVPixelFormat pxfmt_in, AVPixelFormat pxfmt_out)
+Converter::Converter(int width, int height, AVPixelFormat pxfmt_in, AVPixelFormat pxfmt_out)
 {
     w = width; h = height;
     av_pix_fmt_in = pxfmt_in;
@@ -193,7 +196,7 @@ FFmpegEncoder::Converter::Converter(int width, int height, AVPixelFormat pxfmt_i
 
 /* static */
 AVFrame *
-FFmpegEncoder::Converter::trivial(const QImage &img, AVPixelFormat fmt, QString & errMsg)
+Converter::trivial(const QImage &img, AVPixelFormat fmt, QString & errMsg)
 {
     if (img.isNull()) { errMsg = "Null image passed to converter"; return nullptr; }
 
@@ -216,7 +219,7 @@ FFmpegEncoder::Converter::trivial(const QImage &img, AVPixelFormat fmt, QString 
     return frame;
 }
 AVFrame *
-FFmpegEncoder::Converter::trivial(const QImage &img, QString & errMsg)
+Converter::trivial(const QImage &img, QString & errMsg)
 {
     if (av_pix_fmt_in != av_pix_fmt_out) {
         errMsg = "Do not call trivial() unless fmt_in == fmt_out!";
@@ -226,7 +229,7 @@ FFmpegEncoder::Converter::trivial(const QImage &img, QString & errMsg)
 }
 
 AVFrame *
-FFmpegEncoder::Converter::convert(const QImage &img, QString & errMsg)
+Converter::convert(const QImage &img, QString & errMsg)
 {
     if (!isOk || img.isNull()) {
         errMsg = "Bad arguments given to FFmpegEncoder::Converter!";
@@ -288,7 +291,7 @@ FFmpegEncoder::Converter::convert(const QImage &img, QString & errMsg)
     }
     return frame;
 }
-
+} // end anon namespace
 
 FFmpegEncoder::FFmpegEncoder(const QString &fn, double fps, int br, int fmt, unsigned n_thr)
     : outFile(fn), fps(fps), bitrate(br), fmt(fmt), num_threads(int(n_thr))
@@ -311,7 +314,7 @@ FFmpegEncoder::~FFmpegEncoder()
     }
 
     if (p && p->queue) { delete p->queue; p->queue = nullptr; }
-    delete conv; conv = nullptr;
+    if (p && p->conv)  { delete p->conv; p->conv = nullptr; }
     delete p; p = nullptr; // should write trailer for us...
 }
 
@@ -624,6 +627,7 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
         if (p->c->width != img.width())
             throw QString("Unexpected image size change: Did you resize the screen?");
         if (img_pix_fmt != codec_pix_fmt) {
+            Converter * & conv (p->conv);
             if (!conv || conv->w != img.width() || conv->h != img.height() || conv->av_pix_fmt_in != img_pix_fmt
                     || conv->av_pix_fmt_out != codec_pix_fmt
                     || (p && p->codec_pix_fmt != codec_pix_fmt) )

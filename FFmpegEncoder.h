@@ -26,10 +26,8 @@ public:
 
 private:
     struct Priv;
-    struct Converter;
 
     Priv *p = nullptr;
-    Converter *conv = nullptr;
 
     bool setupP(int w, int h, int av_pix_fmt, QString *err = nullptr); //< sets error if false
     bool flushEncoder(QString *errMsg = nullptr);

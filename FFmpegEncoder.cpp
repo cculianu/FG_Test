@@ -485,14 +485,6 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
             //todo: avformat_write_header
         }
 
-/*        p->f = fopen(outFile.Utf8().constData(), "wb");
-        if (!p->f) {
-            QString estring = strerror(errno);
-            error = QString("Error opening output file: ") + outFile + "; error was: " + estring;
-            retVal = false;
-            break;
-        }
-*/
         if (avio_open(&p->oc->pb, outFile.toUtf8().constData(), AVIO_FLAG_WRITE) < 0) {
                error = "Error #7: Open failed on file " + outFile;
                retVal = false;
@@ -523,7 +515,6 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
     plock.unlock();
     plock.lockForRead();
 
-    //qDebug("CODEC CONTEXT VERSION: %d BITS_PER_RAW_SAMPLE: %d", p->c->level, p->c->bits_per_raw_sample);
     return retVal;
 }
 
@@ -545,7 +536,7 @@ bool FFmpegEncoder::flushEncoder(QString *errMsg)
 {
     if (p && p->framesProcessed && p->c && p->oc && p->video_st && p->oc->pb && !p->oc->pb->error) {
         if (p->c->codec->capabilities & AV_CODEC_CAP_DELAY) {
-            Debug("Flushing delayed video frames...");
+            Debug("Flushing video frames from codec buffers...");
             // delayed frames.. get and save
             int iter_ctr = 0, res = 0;
 

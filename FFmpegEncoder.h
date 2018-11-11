@@ -2,7 +2,6 @@
 #define FFMPEGENCODER_H
 
 #include <QString>
-#include <QReadWriteLock>
 
 struct Frame;
 
@@ -31,7 +30,6 @@ private:
 
     Priv *p = nullptr;
     Converter *conv = nullptr;
-    QReadWriteLock plock;
 
     bool setupP(int w, int h, int av_pix_fmt, QString *err = nullptr); //< sets error if false
     bool flushEncoder(QString *errMsg = nullptr);

@@ -119,6 +119,7 @@ struct FFmpegEncoder::Priv {
     AVPacket pkt;
     unsigned framesProcessed = 0; ///< used to determine if we need to flush encoder
     AVPixelFormat codec_pix_fmt = AV_PIX_FMT_NONE;
+    AVColorRange color_range = AVCOL_RANGE_UNSPECIFIED;
 
     qint64 firstFrameNum = -1; ///< used to calculate frame->pts
 
@@ -290,8 +291,7 @@ FFmpegEncoder::Converter::convert(const QImage &img, QString & errMsg)
 
 
 FFmpegEncoder::FFmpegEncoder(const QString &fn, double fps, int br, int fmt, unsigned n_thr)
-    : plock(QReadWriteLock::NonRecursive),
-      outFile(fn), fps(fps), bitrate(br), fmt(fmt), num_threads(int(n_thr))
+    : outFile(fn), fps(fps), bitrate(br), fmt(fmt), num_threads(int(n_thr))
 {
     p = new Priv;
     p->queue = new Q;
@@ -354,16 +354,12 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
     QString dummy, &error(err_out ? *err_out : dummy);
     error = "";
 
-    QWriteLocker wl (&plock);
-
     do {
-        Q *q = p && p->queue ? p->queue : new Q;
-        const qint64 ffn = p ? p->firstFrameNum : -1;
-        delete p; p = nullptr;
-        p = new Priv;
-        p->queue = q;
-        p->firstFrameNum = ffn;
-
+        if (!p) {
+            error = "INTERNAL ERROR: P ptr is NULL!";
+            retVal = false;
+            break;
+        }
 
         AVCodecID codec_id = fmt2CodecId(fmt);
         if (codec_id == AV_CODEC_ID_NONE) {
@@ -437,6 +433,7 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
             //p->c->thread_type = FF_THREAD_FRAME;
             p->c->thread_count = num_threads;
             p->c->thread_type = FF_THREAD_SLICE;
+            p->color_range = AVCOL_RANGE_JPEG; // not sure this makes one iota of difference.
             break;
         case AV_CODEC_ID_LJPEG:
             p->c->max_b_frames = 0;
@@ -654,6 +651,7 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
         const qint64 fnum = qint64(frame.num) - p->firstFrameNum; // this is really an offset from start of recording
 
         outFrame->pts = fnum;
+        outFrame->color_range = p->color_range; // usually this is 0, but for MJPEG this is set to 2
 
         int res = avcodec_send_frame(p->c, outFrame); // will ref this frame's buf (shallow copy it)
 
@@ -695,7 +693,6 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
 
 bool FFmpegEncoder::enqueue(const Frame &frame, QString *errMsg)
 {
-    QReadLocker rl(&plock);
     return p->queue->enqueue(frame, errMsg);
 }
 

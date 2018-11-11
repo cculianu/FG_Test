@@ -19,7 +19,6 @@ public:
     // (encode_time_ms is the time in milliseconds it took to encode the frame.)
     qint64 processOneVideoFrame(int timeout_ms, QString *errMsg = nullptr, int *encode_time_ms = nullptr);
 
-    int encode(const Frame &, QString *errMsg = nullptr);
     quint64 bytesWritten() const;
 
     bool wroteHeader() const;
@@ -30,6 +29,7 @@ private:
     Priv *p = nullptr;
 
     bool setupP(int w, int h, int av_pix_fmt, QString *err = nullptr); //< sets error if false
+    int encode(const Frame &, QString *errMsg = nullptr);
     bool flushEncoder(QString *errMsg = nullptr);
 
 

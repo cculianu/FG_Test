@@ -512,8 +512,6 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
 
 
     } while(0);
-    plock.unlock();
-    plock.lockForRead();
 
     return retVal;
 }

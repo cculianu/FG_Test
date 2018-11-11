@@ -45,11 +45,11 @@ namespace {
 
     struct Q
     {
-        std::deque<Frame> frames; ///< buffered video frames.  this list never exceeds maxImgs in size
+        std::deque<Frame> frames; ///< buffered video frames.  this list never exceeds maxImgs in size. guarded but mut below.
 
         static const int maxFrames = qMax(3,int(Frame::DefaultFPS())); ///< max number of video frames to buffer: 1 second worth of frames or 3 minimum.
 
-        QMutex mut; ///< to synchronize access to video frames
+        QMutex mut; ///< to synchronize access to frames member above
         QSemaphore sem; ///< signals video frames are ready.. sem.available() never exceeds maxImgs, and should always equal the imgs size
 
         Q() : sem(0) {}
@@ -85,6 +85,7 @@ namespace {
         void putBackFrame(const Frame &frame) {
             // unconditionally put back a frame because FFmpeg gave us EGAIN when we tried to process it.
             // This frame will be possibly cleaned up if enqueue() is called again in the near future and the queue is full.
+            QMutexLocker l(&mut);
             frames.push_front(frame);
         }
 
@@ -676,7 +677,7 @@ qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int 
 {
     using Util::getTime;
 
-    qint64 t0 = getTime(), t1=t0, t2=t0/*, t3 = t0*/;
+    qint64 t0 = getTime(), t1=t0, t2=t0;
     if (errMsg) *errMsg = "";
     if (tEncode) *tEncode = 0;
     Q & q = *p->queue;
@@ -685,8 +686,8 @@ qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int 
 
     Frame frame = q.dequeueOneFrame(timeout_ms);
     t1 = getTime();
-//    if (res) qDebug("dequeue got img frame %llu (%d x %d)", frame.num, frame.img.width(), frame.img.height());
     if (!frame.isNull()) {
+        //    if (res) qDebug("dequeue got img frame %llu (%d x %d)", frame.num, frame.img.width(), frame.img.height());
         res = encode(frame, errMsg);
         if (res == 0) {
             // got EAGAIN from avcodec
@@ -703,14 +704,10 @@ qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int 
     if (res < 0) {
         if (errMsg && errMsg->isEmpty()) *errMsg = "Error writing data.";
         retVal = -1;
-    }
-
-    //t3 = getTime();
-
-    if (res > 0) {
+    } else if (res > 0) {
         if (tEncode) *tEncode = int(t2-t1);
-        //qDebug("frame %u (%d x %d, %u audio streams) took %lld ms waiting for a frame, %lld ms to encode, and %lld ms to encode %u audio frames, (%lld ms total encoding time), %lld ms total time",
-        //       fNum, imgW, imgH, aqSize, t1-t0, t2-t1, t3-t2, nAudioFrames, t3-t1, getTime()-t0);
+        //qDebug("frame %llu (%d x %d) took %lld ms waiting for a frame, %lld ms to encode",
+        //       frame.num, frame.img.width(), frame.img.height(), t1-t0, t2-t1);
     }
     return retVal;
 }

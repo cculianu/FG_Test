@@ -47,7 +47,7 @@ namespace {
     {
         std::deque<Frame> frames; ///< buffered video frames.  this list never exceeds maxImgs in size
 
-        static const int maxFrames = qMax(3,int(Frame::DefaultFPS())); ///< max number of video frames to buffer
+        static const int maxFrames = qMax(3,int(Frame::DefaultFPS())); ///< max number of video frames to buffer: 1 second worth of frames or 3 minimum.
 
         QMutex mut; ///< to synchronize access to video frames
         QSemaphore sem; ///< signals video frames are ready.. sem.available() never exceeds maxImgs, and should always equal the imgs size
@@ -92,9 +92,8 @@ namespace {
         Frame dequeueOneFrame(int timeout_ms) {
             Frame frame;
 
-            bool ok = sem.tryAcquire(1,timeout_ms);
-            mut.lock();
-            if (ok) { // todo: check for race condition here?
+            if (bool ok = sem.tryAcquire(1,timeout_ms); ok) { // todo: check for race condition here?
+                QMutexLocker l(&mut);
                 if (!frames.empty()) {
                     // there appears to be a race condition here where sometimes we get signalled that the
                     // sem is available but imgs.isEmpty().  I am not sure *why* this would ever happen with
@@ -104,7 +103,7 @@ namespace {
                     frames.pop_front();
                 }
             }
-            mut.unlock();
+
             return frame;
         }
     };
@@ -122,7 +121,7 @@ struct FFmpegEncoder::Priv {
     unsigned framesProcessed = 0; ///< used to determine if we need to flush encoder
     AVPixelFormat codec_pix_fmt = AV_PIX_FMT_NONE;
 
-    qint64 firstFrameNum = -1;
+    qint64 firstFrameNum = -1; ///< used to calculate frame->pts
 
     Q *queue = nullptr;
 
@@ -555,24 +554,24 @@ bool FFmpegEncoder::flushEncoder(QString *errMsg)
             // now loop until no more packets are read
             while (0 == res)
             {
-                    // this normally returns 0 until end of stream, then it returns AFERROR_EOF
-                    res = avcodec_receive_packet(p->c, &p->pkt);
+                // this normally returns 0 until end of stream, then it returns AFERROR_EOF
+                res = avcodec_receive_packet(p->c, &p->pkt);
 
-                    if (0 == res)
-                        // if we got a packet, write it to file
-                        res = write_frame(p->oc, &p->c->time_base, p->video_st,
-                                          &p->pkt); // this automatically unreferences and clears the packet
+                if (0 == res)
+                    // if we got a packet, write it to file
+                    res = write_frame(p->oc, &p->c->time_base, p->video_st,
+                                      &p->pkt); // this automatically unreferences and clears the packet
 
-                    if (res && res != AVERROR_EOF) {
-                        // res != 0 and res != AVERROR_EOF means we got some error above...
-                        if (errMsg) {
-                            *errMsg = "Error from inner write_frame()";
-                            if (p->oc && p->oc->pb && p->oc->pb->error)
-                                *errMsg += QString(": ") + strerror(abs(p->oc->pb->error));
-                        }
-                        return false;
+                if (res && res != AVERROR_EOF) {
+                    // res != 0 and res != AVERROR_EOF means we got some error above...
+                    if (errMsg) {
+                        *errMsg = "Error from inner write_frame()";
+                        if (p->oc && p->oc->pb && p->oc->pb->error)
+                            *errMsg += QString(": ") + strerror(abs(p->oc->pb->error));
                     }
-                    ++iter_ctr;
+                    return false;
+                }
+                ++iter_ctr;
             }
             Debug("Did %d extra video 'receive_packet' iterations...",iter_ctr);
         }

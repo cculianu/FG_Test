@@ -62,7 +62,6 @@ namespace {
             }
         }
 
-        // deep-copies img
         // always succeeds but returns false if queue was full and old img frames were dropped as a result of enqueue
         bool enqueue(const Frame & frame, QString *err = nullptr) {
             bool ret = true;
@@ -86,7 +85,7 @@ namespace {
             // unconditionally put back a frame because FFmpeg gave us EGAIN when we tried to process it.
             // This frame will be possibly cleaned up if enqueue() is called again in the near future and the queue is full.
             QMutexLocker l(&mut);
-            frames.push_front(std::move(frame));
+            frames.emplace_front(std::move(frame));
         }
 
         // returns a non-null frame if we have an actual img frame. If no frame was available, the returned frame is null.

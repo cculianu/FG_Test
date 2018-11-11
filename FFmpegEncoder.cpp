@@ -7,18 +7,18 @@
 // AVCODEC STUFF
 #include <math.h>
 extern "C" {
-#include <libavutil/opt.h>
-#include <libavcodec/avcodec.h>
-#include <libavutil/channel_layout.h>
-#include <libavutil/common.h>
-#include <libavutil/imgutils.h>
-#include <libavutil/mathematics.h>
-#include <libavutil/samplefmt.h>
-#include <libswscale/swscale.h>
-#include <libavformat/avformat.h>
-#include <libavformat/avio.h>
-#include <libavdevice/avdevice.h>
-#include <libavfilter/avfilter.h>
+#include "libavutil/opt.h"
+#include "libavcodec/avcodec.h"
+#include "libavutil/channel_layout.h"
+#include "libavutil/common.h"
+#include "libavutil/imgutils.h"
+#include "libavutil/mathematics.h"
+#include "libavutil/samplefmt.h"
+#include "libswscale/swscale.h"
+#include "libavformat/avformat.h"
+#include "libavformat/avio.h"
+#include "libavdevice/avdevice.h"
+#include "libavfilter/avfilter.h"
 }
 // /AVCODEC STUFF
 

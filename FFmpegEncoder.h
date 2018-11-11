@@ -33,7 +33,7 @@ private:
     Converter *conv = nullptr;
     QReadWriteLock plock;
 
-    bool setupP(int w, int h, int av_pix_fmt); //< sets error if false
+    bool setupP(int w, int h, int av_pix_fmt, QString *err = nullptr); //< sets error if false
     bool flushEncoder(QString *errMsg = nullptr);
 
 
@@ -41,8 +41,6 @@ private:
     double fps = 0.0;
     int64_t bitrate=0;
     int fmt=0,num_threads=0;
-
-    QString error;
 };
 
 #endif // FFMPEGENCODER_H

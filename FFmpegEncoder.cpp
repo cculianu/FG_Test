@@ -132,22 +132,25 @@ struct FFmpegEncoder::Priv {
     ~Priv();
 };
 
-/// this is a work-alike to AVPicture. AVPicture itself was deprecated.
-struct Picture {
-    uint8_t *data[AV_NUM_DATA_POINTERS];    ///< pointers to the image data planes
-    int linesize[AV_NUM_DATA_POINTERS];     ///< number of bytes per line
-    Picture() { memset(data, 0, sizeof(data)); memset(linesize, 0, sizeof(linesize)); }
-};
 
 struct FFmpegEncoder::Converter {
-    Picture inpic, outpic;
+    /// this is a work-alike to AVPicture. AVPicture itself was deprecated.
+    struct Picture {
+        uint8_t *data[AV_NUM_DATA_POINTERS];    ///< pointers to the image data planes
+        int linesize[AV_NUM_DATA_POINTERS];     ///< number of bytes per line
+        Picture() { memset(data, 0, sizeof(data)); memset(linesize, 0, sizeof(linesize)); }
+    };
+
+    Picture inpic;
     bool avPictureOk = false;
     int w=0, h=0; ///< width,height of the incoming image
     AVPixelFormat av_pix_fmt_in; ///< the format of the incoming QImages.. usually RGB0
     AVPixelFormat av_pix_fmt_out;
     SwsContext *ctx = nullptr;
 
-    const Picture *convert(const QImage &, QString &errMsg);
+    /// on success, returns a newly allocated frame which must be freed with av_frame_free(&frame).
+    /// on error, returns nullptr and sets errMsg
+    AVFrame *convert(const QImage &, QString &errMsg);
 
     ~Converter();
     Converter(int w, int h, AVPixelFormat src_fmt, AVPixelFormat dest_fmt);
@@ -156,10 +159,6 @@ struct FFmpegEncoder::Converter {
 FFmpegEncoder::Converter::~Converter()
 {
     if (ctx) { sws_freeContext(ctx); ctx = nullptr; }
-    if (avPictureOk) {
-        av_freep(&outpic.data[0]);
-        memset(&outpic, 0, sizeof(outpic));
-    }
 }
 
 FFmpegEncoder::Converter::Converter(int width, int height, AVPixelFormat pxfmt_in, AVPixelFormat pxfmt_out)
@@ -167,7 +166,7 @@ FFmpegEncoder::Converter::Converter(int width, int height, AVPixelFormat pxfmt_i
     w = width; h = height;
     av_pix_fmt_in = pxfmt_in;
     av_pix_fmt_out = pxfmt_out;
-    avPictureOk = av_image_alloc(outpic.data, outpic.linesize, w, h, av_pix_fmt_out, 32 /*force 32-byte alignment good for all codecs*/) > 0;
+    avPictureOk = w > 0 && h > 0 && av_pix_fmt_in >= 0 && av_pix_fmt_out >= 0;
     if (!avPictureOk) {
         Error("FFmpegEncoder::Could not allocate output picture buffer!");
         return;
@@ -182,10 +181,9 @@ FFmpegEncoder::Converter::Converter(int width, int height, AVPixelFormat pxfmt_i
                          av_pix_fmt_out,
                          SWS_FAST_BILINEAR,
                          nullptr, nullptr, nullptr);
-
 }
 
-const Picture *
+AVFrame *
 FFmpegEncoder::Converter::convert(const QImage &img, QString & errMsg)
 {
     if (!ctx || !avPictureOk) {
@@ -197,36 +195,56 @@ FFmpegEncoder::Converter::convert(const QImage &img, QString & errMsg)
         return nullptr;
     }
 
-    // NB: this does a shallow copy -- just fills pointers to image planes...
-    if (int size = av_image_fill_arrays(inpic.data,
-                                        inpic.linesize,
-                                        img.bits(),
-                                        av_pix_fmt_in, w, h, 32 /* align=32 */);
-            size < 0) {
-        errMsg = QString("av_image_fill_arrays returned %1").arg(size);
-        return nullptr;
-    } else if (size > img.bytesPerLine()*h) {
-        errMsg = "av_image_fill_arrays size is greater than img size in bytes!";
-        return nullptr;
-    }
+    AVFrame *frame = av_frame_alloc(); // allocate frame struct
 
-    //perform the conversion
-    sws_scale(ctx,
-              inpic.data,
-              inpic.linesize,
-              0,
-              h,
-              outpic.data,
-              outpic.linesize);
-    errMsg = "";
-    return &outpic;
+    try {
+        if (!frame)
+            throw QString("av_frame_alloc returned NULL!");
+        // req struct fields need to be set for av_frame_get_buffer to work ok
+        frame->width = w;
+        frame->height = h;
+        frame->format = av_pix_fmt_out;
+        // allocate buffers and reference frame. (av_frame_free also unreferences frame->buf before deleting frame struct)
+        if (int res = av_frame_get_buffer(frame, 0 /* <-- docs say to pass 0 *//*32*/);
+                res != 0) {
+            throw QString("av_frame_get_buffer returned %1").arg(res);
+        }
+
+        // NB: this does a shallow copy -- just fills pointers to image planes...
+        if (int size = av_image_fill_arrays(inpic.data,
+                                            inpic.linesize,
+                                            img.bits(),
+                                            av_pix_fmt_in, w, h, 32 /* align=32 for QImages, from Qt docs*/);
+                size < 0) {
+            throw QString("av_image_fill_arrays returned %1").arg(size);
+        } else if (size > img.bytesPerLine()*h) {
+            throw QString("av_image_fill_arrays size is greater than img size in bytes!");
+        }
+
+        //perform the conversion
+        if (int res =
+                sws_scale(ctx,
+                          inpic.data,
+                          inpic.linesize,
+                          0,
+                          h,
+                          frame->data,
+                          frame->linesize);
+                res < 0) {
+            throw QString("sws_scale returned %1").arg(res);
+        }
+        errMsg = "";
+    } catch (const QString &s) {
+        errMsg = s;
+        av_frame_free(&frame); // implicitly sets frame to nullptr. calling av_frame_free with NULL frame is ok.
+    }
+    return frame;
 }
 
 
 FFmpegEncoder::FFmpegEncoder(const QString &fn, double fps, int br, int fmt, unsigned n_thr)
     : plock(QReadWriteLock::NonRecursive),
-      outFile(fn), fps(fps), bitrate(br), fmt(fmt), num_threads(int(n_thr)),
-      error("")
+      outFile(fn), fps(fps), bitrate(br), fmt(fmt), num_threads(int(n_thr))
 {
     p = new Priv;
     p->queue = new Q;
@@ -240,6 +258,7 @@ FFmpegEncoder::~FFmpegEncoder()
                 break;
     }
 
+    QString error;
     if (!flushEncoder(&error)) {
         Warning("Encoder flush returned error: %s",error.toUtf8().constData());
     }
@@ -270,10 +289,7 @@ FFmpegEncoder::Priv::~Priv()
     }
     if (c) { avcodec_close(c); av_free(c); c = nullptr; }
     if (frame) {
-        //  below av_freep() call is NOT NEEDED SINCE WE DON'T USE OUR OWN BUFFER BUT RATHER USE INCOMING DATA
-        //  av_freep(&frame->data[0]);
-        av_frame_free(&frame);
-        frame = nullptr;
+        av_frame_free(&frame); // implicitly sets frame=nullptr
     }
 //    Debug("Priv deleted.");
 }
@@ -288,9 +304,10 @@ quint64 FFmpegEncoder::bytesWritten() const
     return 0ULL;
 }
 
-bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt)
+bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_out)
 {
     bool retVal = true;
+    QString dummy, &error(err_out ? *err_out : dummy);
     error = "";
 
     QWriteLocker wl (&plock);
@@ -490,6 +507,7 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt)
 
         p->wroteHeader = true;
 
+        // setup p->frame member var
         p->frame = av_frame_alloc();
         if (!p->frame) {
             error = "Error #9: Could not allocate video frame";
@@ -500,18 +518,6 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt)
         p->frame->width = p->c->width;
         p->frame->height = p->c->height;
 
-        /*
-         * Not needed since we encode the image data either from the incoming QImage directly
-         * or from the YUV data output of our Convert::convert() call..
-        */
-        /*
-        int res = av_image_alloc(p->frame->data, p->frame->linesize, p->c->width, p->c->height, p->c->pix_fmt, 32);
-        if (res < 0) {
-            error = "Error #10: Could not allocate raw buffer";
-            retVal = false;
-            break;
-        }
-        */
 
     } while(0);
     plock.unlock();
@@ -583,86 +589,91 @@ bool FFmpegEncoder::flushEncoder(QString *errMsg)
 int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
 {
     const QImage & img(frame.img);
-    const uchar *imgData (img.bits());
-    const Picture *imgYuvData = nullptr;
-    AVPixelFormat img_pix_fmt = qimgfmt2avcodecfmt(img.format());
+    const AVPixelFormat img_pix_fmt = qimgfmt2avcodecfmt(img.format());
 //    qDebug("img_pix_fmt is %d", img_pix_fmt);
-    AVPixelFormat codec_pix_fmt = pixelFormatForCodecId(fmt2CodecId(fmt));
+    const AVPixelFormat codec_pix_fmt = pixelFormatForCodecId(fmt2CodecId(fmt));
 
-    if (img_pix_fmt != codec_pix_fmt) {
-        if (!conv || conv->w != img.width() || conv->h != img.height() || conv->av_pix_fmt_in != img_pix_fmt
-            || conv->av_pix_fmt_out != codec_pix_fmt
-            || (p && p->codec_pix_fmt != codec_pix_fmt) )
-        {
-            if (conv) {
-                delete conv; conv = nullptr;
-                qDebug("Input image format or dimensions changed in FFmpegEncoder::encode()!");
-            }
-            conv = new Converter(img.width(), img.height(), img_pix_fmt, codec_pix_fmt);
-            Debug() << "Img format != Codec format; using a converter";
-        }
-        imgData = nullptr;
-        //auto t0 = Util::getTime();
-        imgYuvData = conv->convert(img, error);
-        //Debug() << "Conversion took " << (Util::getTime()-t0) << " msec";
-        if (!imgYuvData) {
-            if (errMsg) *errMsg = error;
-            return -1;
-        }
-    }
     if (!p || !p->codec || !p->c || !p->oc || !p->frame || !p->oc->pb) {
-        if (!setupP(img.width(), img.height(), codec_pix_fmt)) {
-            if (errMsg) *errMsg = error;
+        if (!setupP(img.width(), img.height(), codec_pix_fmt, errMsg)) {
             return -1;
         }
     }
-    if (p->c->width != img.width()) {
-        if (errMsg) *errMsg = "Unexpected image size change: Did you resize the screen?";
-        return -1;
-    }
 
-    if (p->firstFrameNum < 0LL) p->firstFrameNum = qint64(frame.num); // remember "first frame" number seen for proper pts below...
-    const qint64 fnum = qint64(frame.num) - p->firstFrameNum; // this is really an offset from start of recording
-
-    p->frame->pts = fnum;
-
-    if (imgYuvData) {
-        memcpy(p->frame->data, imgYuvData->data, sizeof(p->frame->data));
-        memcpy(p->frame->linesize, imgYuvData->linesize, sizeof(p->frame->linesize));
-    } else if (imgData) { // RGB32 data
-        p->frame->data[0] = const_cast<uchar *>(imgData);
-        p->frame->linesize[0] = img.bytesPerLine();
-    }
-    int res = avcodec_send_frame(p->c, p->frame);
-
-    // ensure we no longer point to data that will soon go away..
-    memset(p->frame->data, 0, sizeof(p->frame->data));
-    memset(p->frame->linesize, 0, sizeof(p->frame->linesize));
-
+    AVFrame *convertedFrame = nullptr, *outFrame = p->frame;
     int retVal = 1;
 
-    if (AVERROR(EAGAIN) == res) {
-        // new API: avcodec_send_frame() may return EAGAIN when its buffers are full.
-        // indicate this to calling code to re-enqueue the frame later. Then proceed to read packets
-        // off codec and save them to disk.
-        retVal = 0;
-    } else if (res < 0) {
-        // new API same as old here -- negative return that is NOT EAGAIN means error.
-        if (errMsg) *errMsg = "Error encoding frame";
-        return -1;
-    } else
-        p->framesProcessed++;
-
-    while ((res = avcodec_receive_packet(p->c, &p->pkt)) == 0) {
-        if (write_frame(p->oc, &p->c->time_base, p->video_st, &p->pkt)) { // this automatically unreferences and inits the packet
-            if (errMsg) {
-                *errMsg = "Error #11: Could not write frame";
-                if (p->oc && p->oc->pb && p->oc->pb->error)
-                    *errMsg += QString(": ") + strerror(abs(p->oc->pb->error));
+    try {
+        if (img_pix_fmt != codec_pix_fmt) {
+            if (!conv || conv->w != img.width() || conv->h != img.height() || conv->av_pix_fmt_in != img_pix_fmt
+                    || conv->av_pix_fmt_out != codec_pix_fmt
+                    || (p && p->codec_pix_fmt != codec_pix_fmt) )
+            {
+                if (conv) {
+                    delete conv; conv = nullptr;
+                    qDebug("Input image format or dimensions changed in FFmpegEncoder::encode()!");
+                }
+                conv = new Converter(img.width(), img.height(), img_pix_fmt, codec_pix_fmt);
+                Debug() << "Img format != Codec format; using a converter";
             }
-            return -1;
+            QString error = "";
+            //auto t0 = Util::getTime();
+            convertedFrame = conv->convert(img, error);
+            //Debug() << "Conversion took " << (Util::getTime()-t0) << " msec";
+            if (!convertedFrame)
+                throw error;
+            outFrame = convertedFrame;
         }
+        if (p->c->width != img.width())
+            throw QString("Unexpected image size change: Did you resize the screen?");
+
+        if (p->firstFrameNum < 0LL) p->firstFrameNum = qint64(frame.num); // remember "first frame" number seen for proper pts below...
+        const qint64 fnum = qint64(frame.num) - p->firstFrameNum; // this is really an offset from start of recording
+
+        outFrame->pts = fnum;
+
+        if (outFrame != convertedFrame) {
+            // RGB32 data -- convertedFrame == nullptr, and outFrame points to p->frame..  a non-ref counted shallow AVFrame
+            if (img.bits()) {
+                // shallow AVFrame just points to img.bits().  Note that av_send_frame() below will deep copy this frame.
+                outFrame->data[0] = const_cast<uchar *>(img.bits());
+                outFrame->linesize[0] = img.bytesPerLine();
+            } else
+                throw QString("img.bits() is NULL!");
+        }
+        int res = avcodec_send_frame(p->c, outFrame); // will either ref this frame's buf or deep copy it, depending on its nature (convertedFrame versus p->frame)
+
+        if (AVERROR(EAGAIN) == res) {
+            // new API: avcodec_send_frame() may return EAGAIN when its buffers are full.
+            // indicate this to calling code to re-enqueue the frame later. Then proceed to read packets
+            // off codec and save them to disk.
+            retVal = 0;
+        } else if (res < 0) {
+            // new API same as old here -- negative return that is NOT EAGAIN means error.
+            throw QString("Error encoding frame");
+        } else
+            p->framesProcessed++;
+
+        while ((res = avcodec_receive_packet(p->c, &p->pkt)) == 0) { // keep looping until we get -EAGAIN or some error
+            if (write_frame(p->oc, &p->c->time_base, p->video_st, &p->pkt)) { // this automatically unreferences and inits the packet
+                QString error = "Error #11: Could not write frame";
+                if (p->oc && p->oc->pb && p->oc->pb->error)
+                    error += QString(": ") + strerror(qAbs(p->oc->pb->error));
+                throw error;
+            }
+        }
+        if (res != AVERROR(EAGAIN) && res != 0) { // check while() condition above didn't get an error
+           QString error = "Error #12: avcodec_write_packet returned an error";
+           if (p->oc && p->oc->pb && p->oc->pb->error)
+               error += QString(": ") + strerror(qAbs(p->oc->pb->error));
+           throw error;
+        }
+    } catch (const QString & e) {
+        retVal = -1;
+        if (errMsg) *errMsg = e;
     }
+
+    // unconditionally free convertedFrame before function exit.. (NULL *arg is ok in this call)
+    av_frame_free(&convertedFrame);
 
     return retVal;
 }

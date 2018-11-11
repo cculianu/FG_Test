@@ -110,7 +110,164 @@ namespace {
         }
     };
 
+    /// A simple converter to convert from QImage -> AVFrame.
+    /// It can handle converting between pixel formats, but resizing/scaling is not implemented.
+    struct Converter {
+        bool isOk = false;
+        int w=0, h=0; ///< width,height of the incoming image
+        AVPixelFormat av_pix_fmt_in; ///< the format of the incoming QImages.. usually RGB0
+        AVPixelFormat av_pix_fmt_out;
+        SwsContext *ctx = nullptr;
 
+        /// on success, returns a newly allocated frame which must be freed with av_frame_free(&frame).
+        /// on error, returns nullptr and sets errMsg
+        AVFrame *convert(const QImage &, QString &errMsg);
+
+        /// Returns a newly allocated frame like convert above. There is no "conversion" done and it simply copies
+        /// the pixel data from QImage into a referenced AVFrame, and returns it.
+        static AVFrame *trivial(const QImage &, AVPixelFormat fmt, QString& errMsg);
+
+        ~Converter();
+        Converter(int w, int h, AVPixelFormat src_fmt, AVPixelFormat dest_fmt);
+    private:
+        /// Just allocates a new AVFrame for the data in img. Only call this if fmt_in == fmt_out
+        AVFrame *trivial(const QImage &, QString &errMsg);
+
+        /// this is a work-alike to AVPicture. AVPicture itself was deprecated. Used internally.
+        struct Picture {
+            uint8_t *data[AV_NUM_DATA_POINTERS] = {nullptr};    ///< pointers to the image data planes
+            int linesize[AV_NUM_DATA_POINTERS]  = {0};          ///< number of bytes per line
+        };
+    };
+
+    Converter::~Converter()
+    {
+        if (ctx) { sws_freeContext(ctx); ctx = nullptr; }
+    }
+
+    Converter::Converter(int width, int height, AVPixelFormat pxfmt_in, AVPixelFormat pxfmt_out)
+    {
+        w = width; h = height;
+        av_pix_fmt_in = pxfmt_in;
+        av_pix_fmt_out = pxfmt_out;
+        isOk = w > 0 && h > 0 && av_pix_fmt_in >= 0 && av_pix_fmt_out >= 0;
+        if (!isOk) {
+            Error("FFmpegEncoder bad args!");
+            return;
+        }
+        if (av_pix_fmt_in != av_pix_fmt_out) {
+            //create the conversion context.  you only need to do this once if
+            //you are going to do the same conversion multiple times.
+            ctx = sws_getContext(w,
+                                 h,
+                                 av_pix_fmt_in,
+                                 w,
+                                 h,
+                                 av_pix_fmt_out,
+                                 SWS_FAST_BILINEAR,
+                                 nullptr, nullptr, nullptr);
+        }
+    }
+
+    /* static */
+    AVFrame *
+    Converter::trivial(const QImage &img, AVPixelFormat fmt, QString & errMsg)
+    {
+        if (img.isNull()) { errMsg = "Null image passed to converter"; return nullptr; }
+
+        AVFrame *frame = av_frame_alloc(); // allocate frame struct, initializing to default values
+        try {
+            if (!frame) throw QString("Could not allocate AVFrame");
+            frame->format = fmt;
+            frame->width = img.width();
+            frame->height = img.height();
+            if (av_frame_get_buffer(frame, 0))
+                throw QString("Could not allocate AVFrame buffer");
+            Picture inpic;
+            if (av_image_fill_arrays(inpic.data, inpic.linesize, img.bits(), fmt, img.width(), img.height(), 32/*QImages use align=32*/) < 0)
+                throw QString("Could not fill arrays");
+            av_image_copy(frame->data, frame->linesize, const_cast<const uint8_t **>(inpic.data), inpic.linesize, fmt, img.width(), img.height());
+        } catch (const QString & e) {
+            errMsg = e;
+            av_frame_free(&frame);
+        }
+        return frame;
+    }
+    AVFrame *
+    Converter::trivial(const QImage &img, QString & errMsg)
+    {
+        if (av_pix_fmt_in != av_pix_fmt_out) {
+            errMsg = "Do not call trivial() unless fmt_in == fmt_out!";
+            return nullptr;
+        }
+        return trivial(img, av_pix_fmt_out, errMsg);
+    }
+
+    AVFrame *
+    Converter::convert(const QImage &img, QString & errMsg)
+    {
+        if (!isOk || img.isNull()) {
+            errMsg = "Bad arguments given to FFmpegEncoder::Converter!";
+            return nullptr;
+        }
+        if (av_pix_fmt_in == av_pix_fmt_out)
+            return trivial(img, errMsg);
+        if (!ctx) {
+            errMsg = "Could not allocate a SwsContext!";
+            return nullptr;
+        }
+        if (img.width() != w || img.height() != h) {
+            errMsg = "img.width or img.height changed!";
+            return nullptr;
+        }
+
+        AVFrame *frame = av_frame_alloc(); // allocate frame struct
+
+        try {
+            if (!frame)
+                throw QString("av_frame_alloc returned NULL!");
+            // req struct fields need to be set for av_frame_get_buffer to work ok
+            frame->width = w;
+            frame->height = h;
+            frame->format = av_pix_fmt_out;
+            // allocate buffers and reference frame. (av_frame_free also unreferences frame->buf before deleting frame struct)
+            if (int res = av_frame_get_buffer(frame, 0 /* <-- docs say to pass 0 *//*32*/);
+                    res != 0) {
+                throw QString("av_frame_get_buffer returned %1").arg(res);
+            }
+
+            Picture inpic;
+
+            // NB: this does a shallow copy -- just fills pointers to image planes...
+            if (int size = av_image_fill_arrays(inpic.data,
+                                                inpic.linesize,
+                                                img.bits(),
+                                                av_pix_fmt_in, w, h, 32 /* align=32 for QImages, from Qt docs*/);
+                    size < 0) {
+                throw QString("av_image_fill_arrays returned %1").arg(size);
+            } else if (size > img.bytesPerLine()*h) {
+                throw QString("av_image_fill_arrays size is greater than img size in bytes!");
+            }
+
+            //perform the conversion
+            if (int res =
+                    sws_scale(ctx,
+                              inpic.data,
+                              inpic.linesize,
+                              0,
+                              h,
+                              frame->data,
+                              frame->linesize);
+                    res < 0) {
+                throw QString("sws_scale returned %1").arg(res);
+            }
+            errMsg = "";
+        } catch (const QString &s) {
+            errMsg = s;
+            av_frame_free(&frame); // implicitly sets frame to nullptr. calling av_frame_free with NULL frame is ok.
+        }
+        return frame;
+    }
 } // end anonymous namespace
 
 struct FFmpegEncoder::Priv {
@@ -133,165 +290,6 @@ struct FFmpegEncoder::Priv {
     Priv();
     ~Priv();
 };
-
-namespace {
-struct Converter {
-    /// this is a work-alike to AVPicture. AVPicture itself was deprecated.
-    struct Picture {
-        uint8_t *data[AV_NUM_DATA_POINTERS];    ///< pointers to the image data planes
-        int linesize[AV_NUM_DATA_POINTERS];     ///< number of bytes per line
-        Picture() { memset(data, 0, sizeof(data)); memset(linesize, 0, sizeof(linesize)); }
-    };
-
-    Picture inpic;
-    bool isOk = false;
-    int w=0, h=0; ///< width,height of the incoming image
-    AVPixelFormat av_pix_fmt_in; ///< the format of the incoming QImages.. usually RGB0
-    AVPixelFormat av_pix_fmt_out;
-    SwsContext *ctx = nullptr;
-
-    /// on success, returns a newly allocated frame which must be freed with av_frame_free(&frame).
-    /// on error, returns nullptr and sets errMsg
-    AVFrame *convert(const QImage &, QString &errMsg);
-
-    /// Returns a newly allocated frame like convert above. There is no "conversion" done and it simply copies
-    /// the pixel data from QImage into a referenced AVFrame, and returns it.
-    static AVFrame *trivial(const QImage &, AVPixelFormat fmt, QString& errMsg);
-
-    ~Converter();
-    Converter(int w, int h, AVPixelFormat src_fmt, AVPixelFormat dest_fmt);
-private:
-    /// Just allocates a new AVFrame for the data in img. Only call this if fmt_in == fmt_out
-    AVFrame *trivial(const QImage &, QString &errMsg);
-};
-
-Converter::~Converter()
-{
-    if (ctx) { sws_freeContext(ctx); ctx = nullptr; }
-}
-
-Converter::Converter(int width, int height, AVPixelFormat pxfmt_in, AVPixelFormat pxfmt_out)
-{
-    w = width; h = height;
-    av_pix_fmt_in = pxfmt_in;
-    av_pix_fmt_out = pxfmt_out;
-    isOk = w > 0 && h > 0 && av_pix_fmt_in >= 0 && av_pix_fmt_out >= 0;
-    if (!isOk) {
-        Error("FFmpegEncoder bad args!");
-        return;
-    }
-    if (av_pix_fmt_in != av_pix_fmt_out) {
-        //create the conversion context.  you only need to do this once if
-        //you are going to do the same conversion multiple times.
-        ctx = sws_getContext(w,
-                             h,
-                             av_pix_fmt_in,
-                             w,
-                             h,
-                             av_pix_fmt_out,
-                             SWS_FAST_BILINEAR,
-                             nullptr, nullptr, nullptr);
-    }
-}
-
-/* static */
-AVFrame *
-Converter::trivial(const QImage &img, AVPixelFormat fmt, QString & errMsg)
-{
-    if (img.isNull()) { errMsg = "Null image passed to converter"; return nullptr; }
-
-    AVFrame *frame = av_frame_alloc(); // allocate frame struct, initializing to default values
-    try {
-        if (!frame) throw QString("Could not allocate AVFrame");
-        frame->format = fmt;
-        frame->width = img.width();
-        frame->height = img.height();
-        if (av_frame_get_buffer(frame, 0))
-            throw QString("Could not allocate AVFrame buffer");
-        uint8_t *data[4];  int linesize[4];
-        if (av_image_fill_arrays(data, linesize, img.bits(), fmt, img.width(), img.height(), 32/*QImages use align=32*/) < 0)
-            throw QString("Could not fill arrays");
-        av_image_copy(frame->data, frame->linesize, const_cast<const uint8_t **>(data), linesize, fmt, img.width(), img.height());
-    } catch (const QString & e) {
-        errMsg = e;
-        av_frame_free(&frame);
-    }
-    return frame;
-}
-AVFrame *
-Converter::trivial(const QImage &img, QString & errMsg)
-{
-    if (av_pix_fmt_in != av_pix_fmt_out) {
-        errMsg = "Do not call trivial() unless fmt_in == fmt_out!";
-        return nullptr;
-    }
-    return trivial(img, av_pix_fmt_out, errMsg);
-}
-
-AVFrame *
-Converter::convert(const QImage &img, QString & errMsg)
-{
-    if (!isOk || img.isNull()) {
-        errMsg = "Bad arguments given to FFmpegEncoder::Converter!";
-        return nullptr;
-    }
-    if (av_pix_fmt_in == av_pix_fmt_out)
-        return trivial(img, errMsg);
-    if (!ctx) {
-        errMsg = "Could not allocate a SwsContext!";
-        return nullptr;
-    }
-    if (img.width() != w || img.height() != h) {
-        errMsg = "img.width or img.height changed!";
-        return nullptr;
-    }
-
-    AVFrame *frame = av_frame_alloc(); // allocate frame struct
-
-    try {
-        if (!frame)
-            throw QString("av_frame_alloc returned NULL!");
-        // req struct fields need to be set for av_frame_get_buffer to work ok
-        frame->width = w;
-        frame->height = h;
-        frame->format = av_pix_fmt_out;
-        // allocate buffers and reference frame. (av_frame_free also unreferences frame->buf before deleting frame struct)
-        if (int res = av_frame_get_buffer(frame, 0 /* <-- docs say to pass 0 *//*32*/);
-                res != 0) {
-            throw QString("av_frame_get_buffer returned %1").arg(res);
-        }
-
-        // NB: this does a shallow copy -- just fills pointers to image planes...
-        if (int size = av_image_fill_arrays(inpic.data,
-                                            inpic.linesize,
-                                            img.bits(),
-                                            av_pix_fmt_in, w, h, 32 /* align=32 for QImages, from Qt docs*/);
-                size < 0) {
-            throw QString("av_image_fill_arrays returned %1").arg(size);
-        } else if (size > img.bytesPerLine()*h) {
-            throw QString("av_image_fill_arrays size is greater than img size in bytes!");
-        }
-
-        //perform the conversion
-        if (int res =
-                sws_scale(ctx,
-                          inpic.data,
-                          inpic.linesize,
-                          0,
-                          h,
-                          frame->data,
-                          frame->linesize);
-                res < 0) {
-            throw QString("sws_scale returned %1").arg(res);
-        }
-        errMsg = "";
-    } catch (const QString &s) {
-        errMsg = s;
-        av_frame_free(&frame); // implicitly sets frame to nullptr. calling av_frame_free with NULL frame is ok.
-    }
-    return frame;
-}
-} // end anon namespace
 
 FFmpegEncoder::FFmpegEncoder(const QString &fn, double fps, int br, int fmt, unsigned n_thr)
     : outFile(fn), fps(fps), bitrate(br), fmt(fmt), num_threads(int(n_thr))

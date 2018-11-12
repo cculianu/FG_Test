@@ -4,5 +4,6 @@
         <file>Img/tray_icon.png</file>
         <file>Img/status_red.png</file>
         <file>Img/status_green.png</file>
+        <file>Img/status_red_off.png</file>
     </qresource>
 </RCC>

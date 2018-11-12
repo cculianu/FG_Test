@@ -11,10 +11,17 @@
 #include <QCheckBox>
 #include <QGridLayout>
 #include <QTimer>
+#include <QIcon>
 #include <chrono>
+#include <vector>
 
 namespace {
-    static QString b2s(bool b)  { return  (b ? "ON" : "OFF"); }
+    QString b2s(bool b)  { return  (b ? "ON" : "OFF"); }
+    enum Icons {
+        Icon_Red_Off=0, Icon_Red, Icon_Green, N_Icons
+    };
+
+    std::vector<QIcon> Icons; // indexed using enum Icons above
 }
 
 MainWindow::MainWindow(QWidget *parent) :
@@ -22,6 +29,8 @@ MainWindow::MainWindow(QWidget *parent) :
     updateStatusMessageThrottled([this]{updateStatusMessage();}),
     ui(new Ui::MainWindow)
 {
+    if (!Icons.size())
+        Icons = { QIcon(":/Img/status_red_off.png"), QIcon(":/Img/status_red.png"), QIcon(":/Img/status_green.png") };
     ui->setupUi(this);
     setWindowIcon(QIcon(":/Img/app_icon.png"));
     using Util::Connect; using Util::app;
@@ -80,6 +89,7 @@ MainWindow::MainWindow(QWidget *parent) :
     });
     connect(rec, &Recorder::stopped, this, [this](){
         kill_dlg();
+        blinkenTimer->stop();
         statusStrings[Recording] = "";
         statusStrings[FrameNumRec] = "";
         statusStrings[Dropped] = "";
@@ -92,6 +102,7 @@ MainWindow::MainWindow(QWidget *parent) :
     });
     connect(rec, &Recorder::started, this, [this](QString fname) {
         kill_dlg();
+        blinkenTimer->start();
         statusStrings[Recording] = QString("Saving to '%1'...").arg(fname);
         tbActs["record"]->setChecked(true);
         Log() << "Recording started, saving to: " << fname;
@@ -116,6 +127,14 @@ MainWindow::MainWindow(QWidget *parent) :
         updateStatusMessageThrottled();
     });
     connect(fgen, &FakeFrameGenerator::generatedFrame, rec, &Recorder::saveFrame);
+
+    connect(blinkenTimer=new QTimer(this), &QTimer::timeout, this, [this]{
+        if (auto a = tbActs["record"]; a && rec && rec->isRecording()) {
+            a->setIcon(!((++blink)%3) ? Icons[Icon_Red_Off] : Icons[Icon_Red]);
+        }
+    });
+    blinkenTimer->setInterval(333);
+    blinkenTimer->setSingleShot(false);
 
     ui->statusBar->setFont(QFont("Fixed"));
 }
@@ -186,7 +205,7 @@ void MainWindow::setupToolBar()
         updateToolBar();
     });
     a->setCheckable(true);
-    a->setIcon(QIcon(":/Img/status_red.png"));
+    a->setIcon(Icons[Icon_Red_Off]);
     tb->addSeparator();
 
     tbActs["clock"] = a = tb->addAction("Clock OFF", this, &MainWindow::updateToolBar);
@@ -213,5 +232,5 @@ void MainWindow::updateToolBar()
     tbActs["timing"]->setText(QString("Timing %1").arg(b2s(b)));
     b = tbActs["record"]->isChecked() && rec->isRecording();
     tbActs["record"]->setText(QString("Recording %1").arg(b2s(b)));
-    tbActs["record"]->setIcon(QIcon(b ? ":/Img/status_green.png" : ":/Img/status_red.png"));
+    tbActs["record"]->setIcon(b ? Icons[Icon_Red] : Icons[Icon_Red_Off]);
 }

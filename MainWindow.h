@@ -13,6 +13,7 @@ class MainWindow;
 class FakeFrameGenerator;
 class Recorder;
 class Dialog;
+class QTimer;
 
 class MainWindow : public QMainWindow
 {
@@ -45,6 +46,8 @@ private:
     QDialog *dlg_tmp = nullptr;
     void kill_dlg();
     void show_dlg(const QString &);
+    QTimer *blinkenTimer = nullptr;
+    int blink = 0;
 };
 
 #endif // MAINWINDOW_H

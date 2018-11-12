@@ -169,6 +169,8 @@ namespace {
             return;
         }
         if (av_pix_fmt_in != av_pix_fmt_out) {
+            Debug() << "Img format != Codec format; using a converter";
+
             //create the conversion context.  you only need to do this once if
             //you are going to do the same conversion multiple times.
             ctx = sws_getContext(w,
@@ -179,7 +181,21 @@ namespace {
                                  av_pix_fmt_out,
                                  SWS_FAST_BILINEAR,
                                  nullptr, nullptr, nullptr);
-            Debug() << "Img format != Codec format; using a converter";
+
+            if (QString(av_get_pix_fmt_name(av_pix_fmt_out)).toLower().contains("yuvj")
+                    && ! QString(av_get_pix_fmt_name(av_pix_fmt_in)).toLower().contains("yuvj") ) {
+                // Make sure to maintain the same colorspace from input -> output for RGB -> YUVJ
+                // Not doing the below caused brightness glitches on MJPEG videos being too dark.
+                // (I think it's because Sws was using JPEG mode for YUVJ when really we are recording a movie).
+                // So.. the below voodoo fixes that.
+                int *table, *inv_table,srcRange,dstRange,brightness,contrast,saturation;
+                sws_getColorspaceDetails(ctx,&inv_table,&srcRange,&table,&dstRange,&brightness,&contrast,&saturation);
+                if (srcRange != dstRange) {
+                    constexpr int override = 0;
+                    Debug("yuvj output: colorspace voodoo applied to sws context: src: %d->%d dest: %d->%d (bri: %d cont: %d sat:%d left untouched)",srcRange,override,dstRange,override,brightness,contrast,saturation);
+                    sws_setColorspaceDetails(ctx, inv_table, override, table, override, brightness, contrast, saturation);
+                }
+            }
         }
     }
 
@@ -321,7 +337,6 @@ struct FFmpegEncoder::Priv {
     AVPacket pkt;
     std::atomic_uint framesProcessed = 0U; ///< used to determine if we need to flush encoder
     AVPixelFormat codec_pix_fmt = AV_PIX_FMT_NONE;
-    AVColorRange color_range = AVCOL_RANGE_UNSPECIFIED;
 
     qint64 firstFrameNum = -1; ///< used to calculate frame->pts
 
@@ -571,7 +586,6 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
             //p->c->thread_type = FF_THREAD_FRAME;
             p->c->thread_count = num_threads;
             p->c->thread_type = FF_THREAD_SLICE;
-            p->color_range = AVCOL_RANGE_JPEG; // not sure this makes one iota of difference.
             break;
         case AV_CODEC_ID_LJPEG:
             p->c->max_b_frames = 0;
@@ -776,7 +790,6 @@ int FFmpegEncoder::encode(Frame & frame, QString *errMsg)
         const qint64 fnum = qint64(frame.num) - p->firstFrameNum; // this is really an offset from start of recording
 
         outFrame->pts = fnum;
-        outFrame->color_range = p->color_range; // usually this is 0, but for MJPEG this is set to 2
 
         int res = avcodec_send_frame(p->c, outFrame); // will ref this frame's buf (shallow copy it)
 

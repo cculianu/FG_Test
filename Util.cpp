@@ -556,7 +556,9 @@ void PerSec::mark(double mul)
     const double tNow = Util::getTimeSecs();
     if (tLast >= 0.0) {
         // compute per sec Avg
-        avg(mul/(tNow-tLast));
+        double result = mul/(tNow-tLast);
+        if (qIsNaN(result) || qIsInf(result)) result = 0.;
+        avg(result);
         if (tNow-tLastEmit >= emitTimeoutSecs) {
             emit perSec(avg());
             tLastEmit = tNow;

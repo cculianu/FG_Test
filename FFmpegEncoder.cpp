@@ -551,7 +551,10 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
             p->c->gop_size = 1;
             p->c->thread_count = num_threads;
             p->c->thread_type = FF_THREAD_SLICE;
-            p->c->level = 4; p->c->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL; // request version 4 FFV1 Codec... this means it won't work by default in VLC but works with ffplay :/
+            // uncomment the below to suppress warnings from ffv1 -- at the expense of losing >8 bits per sample codecs!
+            // for now we leave this commented-out as it appears to generate better, more compatible files to not have the below enabled
+            // but, if the warnings annoy you -- you can suppress them with this.
+            //p->c->level = 4; p->c->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL; // request version 4 FFV1 Codec... this means it won't work by default in VLC but works with ffplay :/
 
             // NB: slices= seems to break movie files (frozen frames) for long periods??
             //p->c->slices=9;

@@ -8,9 +8,10 @@ struct Frame;
 struct AVPacket;
 
 /// A parallelizing Frame encoder for writing Video frames.  Supports various formats. Is pretty fast and nimble.
-/// Note that the input Frame pixel data may be in any format FFmpeg groks, and conversion is one in Converter threads
-/// in parallel with Encoding.  Encoding is done in only 1 thread (however FFmpeg itself uses multiple threads when
-/// encoding behind the scenes for most codecs).
+/// Note that the input Frame pixel data may be in any format FFmpeg groks.
+/// Conversion of incoming pixel data to codec pixel format is done in Converter threads in parallel with the Encoder thread.
+/// Calls to avcodec for encoding uses a single thread because avcodec is not reentrant for the same output stream.
+/// However, FFmpeg itself uses multiple threads internally for encoding (for most codecs, that is), so that's ok.
 class FFmpegEncoder : public QObject
 {
     Q_OBJECT

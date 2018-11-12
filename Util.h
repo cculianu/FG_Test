@@ -13,6 +13,7 @@
 struct Settings;
 class App;
 class QTimer;
+class QThreadPool;
 
 namespace Util {
 
@@ -67,6 +68,11 @@ namespace Util {
     /// if nBytes > 0, then only read the first nBytes and last nBytes of the file (for fast imperfect hashing)
     /// if concatMetaData is true, then add the fileSize in bytes and the fileName and mtime to the hash data
     QString sha256HashOfFile(const QString &fileName, qint64 nBytes = 0LL, bool concatMetadata = false);
+
+    /// renames all threads of threadpool pool with "prefix N" where N is the thread numbers starting at 1.
+    /// Note that internally this actually executes code on each pool to grab the threads to rename them, and waitsForDone.
+    /// Precondition: the pool must not have any current threads executing for this to work correctly. Do this as part of pool setup code.
+    void renameAllPoolThreads(QThreadPool & pool, const QString & prefix);
 
 } // end namespace Util
 
@@ -234,6 +240,8 @@ private:
     QTimer *t = nullptr;
 };
 
+class QThreadPool;
+
 class LambdaRunnable : public QRunnable
 {
 public:
@@ -242,6 +250,10 @@ public:
     LambdaRunnable(VoidFunc &&);
     ~LambdaRunnable() override;
     void run() override;
+
+    static bool tryStart(QThreadPool &, const VoidFunc &);
+    static bool tryStart(QThreadPool &, VoidFunc &&);
+
 private:
     VoidFunc func;
 };

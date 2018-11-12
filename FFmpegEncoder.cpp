@@ -29,6 +29,8 @@ extern "C" {
 #include <QWriteLocker>
 #include <atomic>
 #include <deque>
+#include <list>
+#include <QThreadPool>
 
 #ifdef __GNUC__
 #pragma GCC diagnostic push
@@ -47,47 +49,75 @@ namespace {
 
     struct Q
     {
+        QString name = "Q";
+
         std::deque<Frame> frames; ///< buffered video frames.  this list never exceeds maxImgs in size. guarded by mut below.
 
         static const int maxFrames = qMax(3,int(Frame::DefaultFPS())); ///< max number of video frames to buffer: 1 second worth of frames or 3 minimum.
 
         QMutex mut; ///< to synchronize access to frames member above
-        QSemaphore sem; ///< signals video frames are ready.. sem.available() never exceeds maxImgs, and should always equal the imgs size
+        QSemaphore sem, ///< signals video frames are ready.. sem.available() never exceeds maxImgs, and should always equal the imgs size
+                   semReadyForEncode; ///< signal video frames are proccessed by converters and ready for encode. typically available() should be 1 or 0.
 
-        Q() : sem(0) {}
+        Q() {}
 
         ~Q() {
             if (const auto ctv = frames.size()) {
-                Warning("Q::~Q still had %d frames in Q (all were safely released)", int(ctv));
+                Warning("%s: ~Q still had %d frames in Q (all were safely released)", name.toUtf8().constData(), int(ctv));
             } else {
-                Debug("Q::~Q deleted (and was empty).");
+                Debug("%s: ~Q deleted (and was empty).", name.toUtf8().constData());
             }
         }
 
-        // always succeeds but returns false if queue was full and old img frames were dropped as a result of enqueue
+        // returns false if queue was full, in which case the frame wasn't added
         bool enqueue(const Frame & frame, QString *err = nullptr) {
-            bool ret = true;
-            QMutexLocker l(&mut);
             if (err) *err = "";
-            while (frames.size() >= maxFrames) {
-                ret = false;
-                const auto fdropped = frames.front().num;
-                frames.pop_front();
-                if (err)
-                    *err = QString("FFmpegEncoder::enqueue -- queue full, dropping frame %1").arg(fdropped);
+            QMutexLocker l(&mut);
+            if (frames.size() >= maxFrames) {
+                if (err) *err = QString("FFmpegEncoder::enqueue -- queue full, dropping frame %1").arg(frame.num);
+                return false;
             }
             frames.push_back(frame);
             if (sem.available() < int(frames.size())) {
                 sem.release(int(frames.size()) - sem.available());
             }
-            return ret;
+            return true;
         }
 
+        // unconditionally put back a frame because FFmpeg gave us EGAIN when we tried to process it.
+        // Called from FFmpegEncoder::doEncode()
         void putBackFrame(Frame &&frame) {
-            // unconditionally put back a frame because FFmpeg gave us EGAIN when we tried to process it.
-            // This frame will be possibly cleaned up if enqueue() is called again in the near future and the queue is full.
             QMutexLocker l(&mut);
             frames.emplace_front(std::move(frame));
+            semReadyForEncode.release(1);
+        }
+
+        Frame *findFirstNeedsAVFrame() {
+            QMutexLocker l(&mut);
+            for (auto it = frames.begin(); it != frames.end(); ++it) {
+                if (!it->avframe && it->flag == 0) {
+                    it->flag = 1; // mark it as "being processed"
+                    return &*it;
+                }
+            }
+            return nullptr;
+        }
+
+        void markFrameReadyForEncode(Frame *f) {
+            if (f && f->avframe && f->flag == 1) {
+                f->flag = 2;
+                semReadyForEncode.release(1);
+            }
+        }
+
+        Frame getFirstIfReadyForEncode() {
+            Frame ret;
+            QMutexLocker l(&mut);
+            if (!frames.empty() && frames.front().avframe && frames.front().flag == 2) {
+                ret = std::move(frames.front());
+                frames.pop_front();
+            }
+            return ret;
         }
 
         // returns a non-null frame if we have an actual img frame. If no frame was available, the returned frame is null.
@@ -142,7 +172,7 @@ namespace {
 
     Converter::~Converter()
     {
-        if (ctx) { sws_freeContext(ctx); ctx = nullptr; }
+        if (ctx) { sws_freeContext(ctx); ctx = nullptr; Debug("Deleted a non-trivial converter"); }
     }
 
     Converter::Converter(int width, int height, AVPixelFormat pxfmt_in, AVPixelFormat pxfmt_out)
@@ -166,6 +196,7 @@ namespace {
                                  av_pix_fmt_out,
                                  SWS_FAST_BILINEAR,
                                  nullptr, nullptr, nullptr);
+            Debug() << "Img format != Codec format; using a converter";
         }
     }
 
@@ -268,6 +299,35 @@ namespace {
         }
         return frame;
     }
+
+    class ConverterMgr {
+        std::list<Converter *> convs;
+        QMutex mut;
+    public:
+        Converter *take(int w, int h, int pix_fmt_in, int pix_fmt_out);
+        void put(Converter *&); ///< writes nullptr to passed-in arg after it's done putting the converter back in the list.
+        ~ConverterMgr();
+    };
+
+    Converter *ConverterMgr::take(int w, int h, int pxin, int pxout) {
+        {
+            QMutexLocker l(&mut);
+            for (auto it = convs.begin(); it != convs.end(); ++it) {
+                if (auto conv = *it; conv->w == w && conv->h == h && conv->av_pix_fmt_in == pxin && conv->av_pix_fmt_out == pxout) {
+                    convs.erase(it);
+                    return conv;
+                }
+            }
+        }
+        return new Converter(w, h, AVPixelFormat(pxin), AVPixelFormat(pxout));
+    }
+    void ConverterMgr::put(Converter *&conv) {
+        QMutexLocker l(&mut);
+        convs.push_front(conv);
+        conv = nullptr;
+    }
+    ConverterMgr::~ConverterMgr() { for (auto conv : convs) delete conv; }
+
 } // end anonymous namespace
 
 struct FFmpegEncoder::Priv {
@@ -283,24 +343,37 @@ struct FFmpegEncoder::Priv {
     qint64 firstFrameNum = -1; ///< used to calculate frame->pts
 
     Q *queue = nullptr;
-    Converter *conv = nullptr;
 
     bool wroteHeader = false;
+
+    QThreadPool poolConv, poolEnc;
+    ConverterMgr converters;
+    std::atomic_bool stopEncFlag = false;
 
     Priv();
     ~Priv();
 };
 
-FFmpegEncoder::FFmpegEncoder(const QString &fn, double fps, int br, int fmt, unsigned n_thr)
+FFmpegEncoder::FFmpegEncoder(const QString &fn, double fps, qint64 br, int fmt, unsigned n_thr)
     : outFile(fn), fps(fps), bitrate(br), fmt(fmt), num_threads(int(n_thr))
 {
     p = new Priv;
-    p->queue = new Q;
+    p->queue = new Q; p->queue->name = "Frame Q";
+    p->poolConv.setMaxThreadCount(num_threads);
+    p->poolEnc.setMaxThreadCount(1);
+
+    Util::renameAllPoolThreads(p->poolConv, "Conversion");
+    Util::renameAllPoolThreads(p->poolEnc, "Encoding");
 }
 
 FFmpegEncoder::~FFmpegEncoder()
 {
-    if (p && p->queue && p->oc && p->oc->pb && !p->oc->pb->error) {
+    p->stopEncFlag = true;
+    p->poolConv.waitForDone(); // allow threads to finish
+    p->queue->semReadyForEncode.release(1); // make sure pool runs at least once and sees the stop flag
+    p->poolEnc.waitForDone(); // allow threads to finish
+
+    if (p->queue && p->oc && p->oc->pb && !p->oc->pb->error) {
         while (p->queue->frames.size())
             if (processOneVideoFrame(10) <= 0) // dequeue leftovers...
                 break;
@@ -311,8 +384,7 @@ FFmpegEncoder::~FFmpegEncoder()
         Warning("Encoder flush returned error: %s",error.toUtf8().constData());
     }
 
-    if (p && p->queue) { delete p->queue; p->queue = nullptr; }
-    if (p && p->conv)  { delete p->conv; p->conv = nullptr; }
+    if (p->queue) { delete p->queue; p->queue = nullptr; }
     delete p; p = nullptr; // should write trailer for us...
 }
 
@@ -341,7 +413,86 @@ FFmpegEncoder::Priv::~Priv()
 
 bool FFmpegEncoder::enqueue(const Frame &frame, QString *errMsg)
 {
-    return p->queue->enqueue(frame, errMsg);
+    bool ret = p->queue->enqueue(frame, errMsg);
+    if (!ret) emit frameDropped(frame.num);
+    doConversionLater();
+    doEncodeLater();
+    return ret;
+}
+
+void FFmpegEncoder::doConversionLater()
+{
+    if (!LambdaRunnable::tryStart(p->poolConv, [this]{ doConversion(); })) {
+        // pool busy..
+        //Debug() << "FFmpegEncoder queue->enqueue -- pool busy";
+    }
+}
+void FFmpegEncoder::doEncodeLater()
+{
+    if (!LambdaRunnable::tryStart(p->poolEnc, [this]{ doEncode(); })) {
+        // pool busy..
+        //Debug() << "FFmpegEncoder ready frame->enqueue -- pool busy";
+    }
+}
+
+void FFmpegEncoder::doConversion()
+{
+    Frame *frame = p->queue->findFirstNeedsAVFrame();
+    if (frame) {
+        const QImage & img(frame->img);
+        const AVPixelFormat img_pix_fmt = qimgfmt2avcodecfmt(img.format());
+        const AVPixelFormat codec_pix_fmt = pixelFormatForCodecId(fmt2CodecId(fmt));
+        if (!frame->avframe && int(frame->flag)==1) {
+            auto t0 = Util::getTime();
+            Converter *conv = p->converters.take(img.width(), img.height(), img_pix_fmt, codec_pix_fmt);
+            QString err;
+            frame->avframe = conv->convert(img, err);
+            p->converters.put(conv);
+            if (!frame->avframe)
+                emit error(err);
+            p->queue->markFrameReadyForEncode(frame); // mark it as "processed"
+            Debug() << "convert " << frame->num << " took: " << (Util::getTime()-t0) << " ms";
+            doEncodeLater();
+            doConversionLater();
+        } else {
+            Warning() << "POSSIBLE RACE CONDDITION: Two converter threads got given the same frame!";
+        }
+    } else {
+        //Debug() << "doConversion -- got a null frame";
+    }
+}
+
+void FFmpegEncoder::doEncode()
+{
+    while (!p->stopEncFlag) {
+        if (p->queue->semReadyForEncode.tryAcquire(1, 100)) {
+            int res = 0;
+            quint64 b0 = 0, fnum = 0;
+            QString err;
+            Frame frame = p->queue->getFirstIfReadyForEncode();
+            if (!frame.isNull()) {
+                //    if (res) qDebug("dequeue got img frame %llu (%d x %d)", frame.num, frame.img.width(), frame.img.height());
+                b0 = bytesWritten();
+                res = encode(frame, &err);
+                if (res == 0) {
+                    // got EAGAIN from avcodec
+                    Debug() << "Got EAGAIN from avcodec_send_frame, re-enqueing frame...";
+                    p->queue->putBackFrame(std::move(frame));
+                }
+                fnum = frame.num;
+                if (res < 0) {
+                    emit error(err);
+                } else if (res > 0) {
+                    emit wroteFrame(fnum);
+                    emit wroteBytes(qint64(bytesWritten()-b0));
+                }
+            } else {
+                //Debug("Frame was null...");
+            }
+        } else {
+            //Debug("Spurious wakeup...");
+        }
+    }
 }
 
 qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int *tEncode)
@@ -377,6 +528,7 @@ qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int 
         retVal = -1;
     } else if (res > 0) {
         if (tEncode) *tEncode = int(t2-t1);
+        emit wroteFrame(frame.num);
         //qDebug("frame %llu (%d x %d) took %lld ms waiting for a frame, %lld ms to encode",
         //       frame.num, frame.img.width(), frame.img.height(), t1-t0, t2-t1);
     }
@@ -444,7 +596,7 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
         // the below need tuning and/or possibly coming from ui params
         //p->c->gop_size = fps < 5.0 ? 0 : static_cast<int>(ceil(fps/3.0)); // tune this? todo: from UI?
         //p->c->max_b_frames = fps < 5.0 ? 0 : qRound(fps/5.0);
-        p->c->gop_size = fps > 10.0 ? 10 : int(ceil(fps));
+        p->c->gop_size = 1; //fps > 10.0 ? 10 : int(ceil(fps));
         p->c->max_b_frames = codec_id == AV_CODEC_ID_MPEG2VIDEO && fps >= 5.0 ? 2 : 1;
  /*       if (codec_id == AV_CODEC_ID_MJPEG || codec_id == AV_CODEC_ID_APNG || codec_id == AV_CODEC_ID_GIF
                 || codec_id == AV_CODEC_ID_JPEG2000 || codec_id == AV_CODEC_ID_LJPEG
@@ -508,7 +660,8 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
 
         if (codec_id == AV_CODEC_ID_H264) {
             // todo: have this come from the UI
-            av_opt_set(p->c->priv_data, "preset", "slow", 0);
+            av_opt_set(p->c->priv_data, "preset", "ultrafast", AV_OPT_SEARCH_CHILDREN);
+            av_opt_set(p->c->priv_data, "tune", "zerolatency", AV_OPT_SEARCH_CHILDREN);
         }
 
 
@@ -654,6 +807,7 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
     const AVPixelFormat img_pix_fmt = qimgfmt2avcodecfmt(img.format());
 //    qDebug("img_pix_fmt is %d", img_pix_fmt);
     const AVPixelFormat codec_pix_fmt = pixelFormatForCodecId(fmt2CodecId(fmt));
+    qint64 t0 = Util::getTime();
 
     if (!p || !p->codec || !p->c || !p->oc || !p->oc->pb) {
         if (!setupP(img.width(), img.height(), codec_pix_fmt, errMsg)) {
@@ -661,35 +815,32 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
         }
     }
 
-    AVFrame *outFrame = nullptr;
+    AVFrame *outFrame = frame.avframe ? av_frame_clone(frame.avframe) : nullptr;
+
     int retVal = 1;
 
     try {
         if (p->c->width != img.width())
             throw QString("Unexpected image size change: Did you resize the screen?");
-        if (img_pix_fmt != codec_pix_fmt) {
-            Converter * & conv (p->conv);
-            if (!conv || conv->w != img.width() || conv->h != img.height() || conv->av_pix_fmt_in != img_pix_fmt
-                    || conv->av_pix_fmt_out != codec_pix_fmt
-                    || (p && p->codec_pix_fmt != codec_pix_fmt) )
-            {
-                if (conv) {
-                    delete conv; conv = nullptr;
-                    qDebug("Input image format or dimensions changed in FFmpegEncoder::encode()!");
-                }
-                conv = new Converter(img.width(), img.height(), img_pix_fmt, codec_pix_fmt);
-                Debug() << "Img format != Codec format; using a converter";
+        if (!outFrame) {
+            qint64 t00 = Util::getTime();
+            if (img_pix_fmt != codec_pix_fmt) {
+                Converter * conv = p->converters.take(img.width(), img.height(), img_pix_fmt, codec_pix_fmt);
+                QString error = "";
+
+                //auto t0 = Util::getTime();
+                QString err;
+                outFrame = conv->convert(img, err);
+                p->converters.put(conv);
+                if (!outFrame)
+                    throw err;
+                //Debug() << "Conversion took " << (Util::getTime()-t0) << " msec";
+
+            } else {
+                if (QString err; !(outFrame = Converter::trivial(img, codec_pix_fmt, err)) )
+                    throw err;
             }
-            QString error = "";
-
-            //auto t0 = Util::getTime();
-            if (QString err; !(outFrame = conv->convert(img, err)) )
-                throw err;
-            //Debug() << "Conversion took " << (Util::getTime()-t0) << " msec";
-
-        } else {
-            if (QString err; !(outFrame = Converter::trivial(img, codec_pix_fmt, err)) )
-                throw err;
+            Debug() << "convert " << frame.num << " (alt codepath) took: " << (Util::getTime()-t00) << " ms";
         }
 
         if (p->firstFrameNum < 0LL) p->firstFrameNum = qint64(frame.num); // remember "first frame" number seen for proper pts below...
@@ -730,9 +881,10 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
         if (errMsg) *errMsg = e;
     }
 
-    // unconditionally free convertedFrame before function exit.. (NULL *arg is ok in this call)
+    // unconditionally free avframe before function exit..
     av_frame_free(&outFrame);
 
+    Debug() << "encode " << frame.num << " took: " << (Util::getTime()-t0) << " ms";
     return retVal;
 }
 

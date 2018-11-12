@@ -7,6 +7,8 @@
 #include <QRect>
 #include <QDateTime>
 #include <QThread>
+#include <QThreadPool>
+#include <QSemaphore>
 #include <QMessageBox>
 #include <QProcess>
 #include <QDir>
@@ -404,6 +406,18 @@ namespace Util
 
     Settings &settings() { return app()->settings; }
 
+    void renameAllPoolThreads(QThreadPool & pool, const QString & prefix) {
+        QSemaphore sem;
+        int i;
+        bool ok;
+        for (i = 0, ok = true; ok; ++i) {
+            // rename threads
+            QString name(QString("%1 %2").arg(prefix).arg(i+1));
+            ok = LambdaRunnable::tryStart(pool, [name,&sem]{ QThread::currentThread()->setObjectName(name); Debug() << "Set name to: " << name; sem.release(1); });
+        }
+        sem.acquire(i-1); // wait for threads to run.
+    }
+
 } // end namespace Util
 
 using namespace Util;
@@ -581,3 +595,23 @@ LambdaRunnable::LambdaRunnable(const VoidFunc &f) : func(f) {}
 LambdaRunnable::LambdaRunnable(VoidFunc &&f) : func(std::move(f)) {}
 LambdaRunnable::~LambdaRunnable() {}
 void LambdaRunnable::run() { func(); }
+/*static*/
+bool LambdaRunnable::tryStart(QThreadPool &pool, const VoidFunc &f)
+{
+    auto lr = new LambdaRunnable(f);
+    if (!pool.tryStart(lr)) {
+        delete lr;
+        return false;
+    }
+    return true;
+}
+/*static*/
+bool LambdaRunnable::tryStart(QThreadPool &pool, VoidFunc &&f)
+{
+    auto lr = new LambdaRunnable(std::move(f));
+    if (!pool.tryStart(lr)) {
+        delete lr;
+        return false;
+    }
+    return true;
+}

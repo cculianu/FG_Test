@@ -19,6 +19,7 @@ Frame &Frame::operator=(const Frame &o)
     //qDebug("copy assign");
     img = o.img;
     num = o.num;
+    flag = int(o.flag);
     destroyAVFrame();
     if (o.avframe)
         avframe = av_frame_clone(o.avframe);
@@ -32,6 +33,7 @@ Frame::operator=(Frame &&o)
     if (this != &o) {
         img = std::move(o.img);
         num = o.num;
+        flag = int(o.flag);
         destroyAVFrame();
         avframe = o.avframe;
         o.avframe = nullptr;
@@ -44,6 +46,7 @@ void Frame::destruct()
 {
     img = QImage();
     num = 0;
+    flag = 0;
     destroyAVFrame();
 }
 

@@ -25,7 +25,7 @@ static const QString fmtPrettyStrings[] =
 };
 
 const std::set<Settings::Fmt> Settings::EnabledFormats = {
-    Fmt_RAW, Fmt_PNG, Fmt_JPG, Fmt_FFV1, Fmt_MJPEG, Fmt_LJPEG
+    Fmt_RAW, Fmt_PNG, Fmt_JPG, Fmt_FFV1, Fmt_MJPEG, Fmt_LJPEG, Fmt_Mpeg2, Fmt_Mpeg4, Fmt_H264
 };
 
 const std::set<Settings::Fmt> Settings::ZipableFormats = {
@@ -33,7 +33,7 @@ const std::set<Settings::Fmt> Settings::ZipableFormats = {
 };
 
 const std::set<Settings::Fmt> Settings::FFmpegFormats = {
-    Fmt_FFV1, Fmt_MJPEG, Fmt_LJPEG
+    Fmt_FFV1, Fmt_MJPEG, Fmt_LJPEG, Fmt_Mpeg2, Fmt_Mpeg4, Fmt_H264
 };
 
 

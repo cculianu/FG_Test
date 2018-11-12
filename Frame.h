@@ -2,6 +2,7 @@
 #define FRAME_H
 
 #include <QImage>
+#include <atomic>
 
 struct AVFrame;
 
@@ -12,8 +13,7 @@ struct Frame
     QImage img;
     quint64 num = 0ULL;
     AVFrame *avframe = nullptr; ///< may be null. if non-nullptr, contains referenced AVFrame, suitable for passing to avcodec_send_frame(). (be sure to set avframe->pts before using). Will be freed in d'tor with av_frame_free
-
-
+    std::atomic<int> flag = 0; ///< flag for internal processing use
 
     Frame() {}
     Frame(const QImage &img, quint64 num) : img(img), num(num) {}

@@ -25,7 +25,7 @@ struct Recorder::Pvt
             if (n < 1) n = 1;
             pool.setMaxThreadCount(1); // only 1 processing thread. multiple threads happen in the encoder itself.
             isZip = false;
-            ff = new FFmpegEncoder(dest, fps, int(Frame::DefaultWidth()*Frame::DefaultHeight()*2*8*fps), format, n);
+            ff = new FFmpegEncoder(dest, fps, qint64(1e6*60)/*qint64(Frame::DefaultWidth())*qint64(Frame::DefaultHeight())*2LL*8LL*qint64(fps)*/, format, n);
             pollBytesTimer = 1s;
         } else {
             int n = QThread::idealThreadCount()-1;
@@ -111,6 +111,15 @@ QString Recorder::start(const Settings &settings, QString *saveLocation)
     if (saveLocation) *saveLocation = dest;
     connect(&p->perSecMB, SIGNAL(perSec(double)), this, SIGNAL(dataRate(double)));
     connect(&p->perSecFrames, SIGNAL(perSec(double)), this, SIGNAL(fps(double)));
+    if (p->ff) {
+        connect(p->ff, SIGNAL(error(QString)), this, SIGNAL(error(QString)));
+        connect(p->ff, SIGNAL(error(QString)), this, SLOT(stop()));
+        connect(p->ff, SIGNAL(frameDropped(quint64)), this, SIGNAL(frameDropped(quint64)));
+        connect(p->ff, SIGNAL(wroteFrame(quint64)), this, SIGNAL(wroteFrame(quint64)));
+        connect(p->ff, &FFmpegEncoder::wroteBytes, this, [this](qint64 nb){
+            if (p) p->wroteBytes += nb;
+        });
+    }
     emit started(dest);
     return QString();
 }
@@ -121,43 +130,14 @@ void Recorder::saveFrame(const Frame &f_in)
     if (!p->ff) {
         // no FFmpegEncoder, use "img save"
         Frame f(f_in);
-        auto r = new LambdaRunnable([this, f] { saveFrame_InAThread(f); });
-        if (!p->pool.tryStart(r)) {
-            delete r; r = nullptr;
+        if (!LambdaRunnable::tryStart(p->pool, [this, f] { saveFrame_InAThread(f); })) {
             Warning() << "Frame " << f.num << " dropped";
             emit frameDropped(f.num);
         }
     } else {
         // use FFmpegEncoder
-        bool ok; QString err;
-        ok = p->ff->enqueue(f_in, &err);
-        if (!ok) {
+        if (QString err; ! p->ff->enqueue(f_in, &err) )
             Warning() << err;
-            emit frameDropped(f_in.num);
-        }
-        auto r = new LambdaRunnable([this]{
-            if (p && p->ff) {
-                quint64 b0 = p->ff->bytesWritten();
-                QString err; qint64 res; int tenc;
-                while ( (res=p->ff->processOneVideoFrame(10,&err,&tenc)) > 0 ) {
-                    auto btmp = p->ff->bytesWritten();
-                    p->wroteBytes += qint64(btmp-b0);
-                    b0 = btmp;
-                    Debug() << "Processed frame " << res << " in " << tenc << " ms";
-                    emit wroteFrame(quint64(res));
-                }
-                p->wroteBytes += qint64(p->ff->bytesWritten()-b0);
-                if (res < 0) {
-                    Error() << "Process frame got error: " << err;
-                    emit error(err);
-                    emit stopLater();
-                }
-            }
-        });
-        if (!p->pool.tryStart(r)) {
-            // silently ignore already-busy pool
-            delete r; r = nullptr;
-        }
     }
 }
 

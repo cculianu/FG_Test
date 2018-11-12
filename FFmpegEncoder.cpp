@@ -55,9 +55,8 @@ namespace {
 
         static const int maxFrames = qMax(3,int(Frame::DefaultFPS())); ///< max number of video frames to buffer: 1 second worth of frames or 3 minimum.
 
-        QMutex mut; ///< to synchronize access to frames member above
-        QSemaphore sem, ///< signals video frames are ready.. sem.available() never exceeds maxImgs, and should always equal the imgs size
-                   semReadyForEncode; ///< signal video frames are proccessed by converters and ready for encode. typically available() should be 1 or 0.
+        mutable QMutex mut; ///< to synchronize access to frames member above
+        QSemaphore semReadyForEncode; ///< signal video frames are proccessed by converters and ready for encode. typically sem.available() should be 1 or 0, but may reach maxFrames.
 
         Q() {}
 
@@ -78,20 +77,20 @@ namespace {
                 return false;
             }
             frames.push_back(frame);
-            if (sem.available() < int(frames.size())) {
-                sem.release(int(frames.size()) - sem.available());
-            }
             return true;
         }
 
+        int size() const { QMutexLocker l(&mut); return int(frames.size()); }
+
         // unconditionally put back a frame because FFmpeg gave us EGAIN when we tried to process it.
-        // Called from FFmpegEncoder::doEncode()
+        // Called from FFmpegEncoder::doEncode() (Encoder thread). Will release 1 semaphore resource.
         void putBackFrame(Frame &&frame) {
             QMutexLocker l(&mut);
             frames.emplace_front(std::move(frame));
             semReadyForEncode.release(1);
         }
 
+        // Called from Conversion thread(s)
         Frame *findFirstNeedsAVFrame() {
             QMutexLocker l(&mut);
             for (auto it = frames.begin(); it != frames.end(); ++it) {
@@ -103,6 +102,7 @@ namespace {
             return nullptr;
         }
 
+        // Called from Conversion thread(s) when a frame's conversion is complete. Will release 1 semaphore resource.
         void markFrameReadyForEncode(Frame *f) {
             if (f && f->avframe && f->flag == 1) {
                 f->flag = 2;
@@ -110,6 +110,7 @@ namespace {
             }
         }
 
+        // Called from Encoder thread to query for any frames available to encode. Will return a null frame if none available.
         Frame getFirstIfReadyForEncode() {
             Frame ret;
             QMutexLocker l(&mut);
@@ -120,24 +121,6 @@ namespace {
             return ret;
         }
 
-        // returns a non-null frame if we have an actual img frame. If no frame was available, the returned frame is null.
-        Frame dequeueOneFrame(int timeout_ms) {
-            Frame frame;
-
-            if (sem.tryAcquire(1,timeout_ms)) { // todo: check for race condition here?
-                QMutexLocker l(&mut);
-                if (!frames.empty()) {
-                    // there appears to be a race condition here where sometimes we get signalled that the
-                    // sem is available but imgs.isEmpty().  I am not sure *why* this would ever happen with
-                    // exactly 1 reader and 1 writer -- but it lead to crashes.  So we need this redundant
-                    // check..
-                    frame = std::move(frames.front());
-                    frames.pop_front();
-                }
-            }
-
-            return frame;
-        }
     };
 
     /// A simple converter to convert from QImage -> AVFrame.
@@ -336,7 +319,7 @@ struct FFmpegEncoder::Priv {
     AVFormatContext *oc = nullptr;
     AVStream *video_st = nullptr;
     AVPacket pkt;
-    unsigned framesProcessed = 0; ///< used to determine if we need to flush encoder
+    std::atomic_uint framesProcessed = 0U; ///< used to determine if we need to flush encoder
     AVPixelFormat codec_pix_fmt = AV_PIX_FMT_NONE;
     AVColorRange color_range = AVCOL_RANGE_UNSPECIFIED;
 
@@ -368,16 +351,12 @@ FFmpegEncoder::FFmpegEncoder(const QString &fn, double fps, qint64 br, int fmt, 
 
 FFmpegEncoder::~FFmpegEncoder()
 {
-    p->stopEncFlag = true;
-    p->poolConv.waitForDone(); // allow threads to finish
-    p->queue->semReadyForEncode.release(1); // make sure pool runs at least once and sees the stop flag
-    p->poolEnc.waitForDone(); // allow threads to finish
+    disconnect(); // we don't want threads still running to continue to emit signals as we are destructing.
 
-    if (p->queue && p->oc && p->oc->pb && !p->oc->pb->error) {
-        while (p->queue->frames.size())
-            if (processOneVideoFrame(10) <= 0) // dequeue leftovers...
-                break;
-    }
+    p->poolConv.waitForDone(); // allow conversion threads to finish
+    p->queue->semReadyForEncode.release(p->queue->size()); // make sure encoder thread runs until it drains all frames
+    p->stopEncFlag = true; // stop flag indicates encoder thread should exit after it drains queue.
+    p->poolEnc.waitForDone(); // allow encoder thread to finish
 
     QString error;
     if (!flushEncoder(&error)) {
@@ -416,7 +395,8 @@ bool FFmpegEncoder::enqueue(const Frame &frame, QString *errMsg)
     bool ret = p->queue->enqueue(frame, errMsg);
     if (!ret) emit frameDropped(frame.num);
     doConversionLater();
-    doEncodeLater();
+    if (!p->framesProcessed)
+        doEncodeLater(); // on first run fire up the encode thread
     return ret;
 }
 
@@ -452,10 +432,9 @@ void FFmpegEncoder::doConversion()
                 emit error(err);
             p->queue->markFrameReadyForEncode(frame); // mark it as "processed"
             Debug() << "convert " << frame->num << " took: " << (Util::getTime()-t0) << " ms";
-            doEncodeLater();
-            doConversionLater();
+            doConversionLater(); // re-enqueue another conversion thread when we are done. may be noop if all threads are busy.
         } else {
-            Warning() << "POSSIBLE RACE CONDDITION: Two converter threads got given the same frame!";
+            Warning() << "POSSIBLE RACE CONDITION: Two converter threads got given the same frame!";
         }
     } else {
         //Debug() << "doConversion -- got a null frame";
@@ -464,75 +443,35 @@ void FFmpegEncoder::doConversion()
 
 void FFmpegEncoder::doEncode()
 {
+    int iterct_outer = 0;
     while (!p->stopEncFlag) {
-        if (p->queue->semReadyForEncode.tryAcquire(1, 100)) {
-            int res = 0;
-            quint64 b0 = 0, fnum = 0;
+        int iterct = 0;
+        while (p->queue->semReadyForEncode.tryAcquire(1, 100)) {
             QString err;
             Frame frame = p->queue->getFirstIfReadyForEncode();
             if (!frame.isNull()) {
                 //    if (res) qDebug("dequeue got img frame %llu (%d x %d)", frame.num, frame.img.width(), frame.img.height());
-                b0 = bytesWritten();
-                res = encode(frame, &err);
-                if (res == 0) {
+                if (const int res = encode(frame, &err); res == 0) {
                     // got EAGAIN from avcodec
                     Debug() << "Got EAGAIN from avcodec_send_frame, re-enqueing frame...";
                     p->queue->putBackFrame(std::move(frame));
-                }
-                fnum = frame.num;
-                if (res < 0) {
+                } else if (res < 0) {
                     emit error(err);
                 } else if (res > 0) {
-                    emit wroteFrame(fnum);
-                    emit wroteBytes(qint64(bytesWritten()-b0));
+                    emit wroteFrame(frame.num);
                 }
+                // note Frame may be invalidated after this line because of putBackFrame() call above.
             } else {
                 //Debug("Frame was null...");
             }
-        } else {
+            ++iterct;
+        }
+        if (!iterct) {
             //Debug("Spurious wakeup...");
         }
+        ++iterct_outer;
     }
-}
-
-qint64 FFmpegEncoder::processOneVideoFrame(int timeout_ms, QString *errMsg, int *tEncode)
-{
-    using Util::getTime;
-
-    qint64 t0 = getTime(), t1=t0, t2=t0;
-    if (errMsg) *errMsg = "";
-    if (tEncode) *tEncode = 0;
-    Q & q = *p->queue;
-    qint64 retVal = 0;
-    int res = 0;
-
-    Frame frame = q.dequeueOneFrame(timeout_ms);
-    t1 = getTime();
-    if (!frame.isNull()) {
-        //    if (res) qDebug("dequeue got img frame %llu (%d x %d)", frame.num, frame.img.width(), frame.img.height());
-        res = encode(frame, errMsg);
-        if (res == 0) {
-            // got EAGAIN from avcodec
-            Debug() << "Got EAGAIN from avcodec_send_frame, re-enqueing frame...";
-            q.putBackFrame(std::move(frame));
-            return 0;
-        }
-        retVal = res > 0 ? qint64(frame.num) : -1;
-    } else {
-        return 0;
-    }
-    t2 = getTime();
-
-    if (res < 0) {
-        if (errMsg && errMsg->isEmpty()) *errMsg = "Error writing data.";
-        retVal = -1;
-    } else if (res > 0) {
-        if (tEncode) *tEncode = int(t2-t1);
-        emit wroteFrame(frame.num);
-        //qDebug("frame %llu (%d x %d) took %lld ms waiting for a frame, %lld ms to encode",
-        //       frame.num, frame.img.width(), frame.img.height(), t1-t0, t2-t1);
-    }
-    return retVal;
+    Debug("doEncode exiting after %d semaphore timeouts and %u frames processed", iterct_outer, unsigned(p->framesProcessed));
 }
 
 quint64 FFmpegEncoder::bytesWritten() const
@@ -744,6 +683,7 @@ bool FFmpegEncoder::setupP(int width, int height, int av_pix_fmt, QString *err_o
 
 static int write_frame(AVFormatContext *fmt_ctx, const AVRational *time_base, AVStream *st, AVPacket *pkt)
 {
+
     /* rescale output packet timestamp values from codec to stream timebase */
     av_packet_rescale_ts(pkt, *time_base, st->time_base);
     pkt->stream_index = st->index;
@@ -751,6 +691,14 @@ static int write_frame(AVFormatContext *fmt_ctx, const AVRational *time_base, AV
 
     int ret = av_interleaved_write_frame(fmt_ctx, pkt);
     av_packet_unref(pkt);
+    return ret;
+}
+
+int FFmpegEncoder::write_video_frame(AVPacket *pkt)
+{
+    const quint64 b0 = bytesWritten();
+    const int ret = ::write_frame(p->oc, &p->c->time_base, p->video_st, pkt);
+    if (0==ret) emit wroteBytes(qint64(bytesWritten()-b0));
     return ret;
 }
 
@@ -781,8 +729,7 @@ bool FFmpegEncoder::flushEncoder(QString *errMsg)
 
                 if (0 == res)
                     // if we got a packet, write it to file
-                    res = write_frame(p->oc, &p->c->time_base, p->video_st,
-                                      &p->pkt); // this automatically unreferences and clears the packet
+                    res = write_video_frame(&p->pkt); // this automatically unreferences and clears the packet
 
                 if (res && res != AVERROR_EOF) {
                     // res != 0 and res != AVERROR_EOF means we got some error above...
@@ -801,47 +748,26 @@ bool FFmpegEncoder::flushEncoder(QString *errMsg)
     return true;
 }
 
-int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
+int FFmpegEncoder::encode(Frame & frame, QString *errMsg)
 {
     const QImage & img(frame.img);
-    const AVPixelFormat img_pix_fmt = qimgfmt2avcodecfmt(img.format());
-//    qDebug("img_pix_fmt is %d", img_pix_fmt);
-    const AVPixelFormat codec_pix_fmt = pixelFormatForCodecId(fmt2CodecId(fmt));
     qint64 t0 = Util::getTime();
 
     if (!p || !p->codec || !p->c || !p->oc || !p->oc->pb) {
-        if (!setupP(img.width(), img.height(), codec_pix_fmt, errMsg)) {
+        if (!setupP(img.width(), img.height(), pixelFormatForCodecId(fmt2CodecId(fmt)), errMsg)) {
             return -1;
         }
     }
 
-    AVFrame *outFrame = frame.avframe ? av_frame_clone(frame.avframe) : nullptr;
+    AVFrame *outFrame = frame.avframe;
 
     int retVal = 1;
 
     try {
         if (p->c->width != img.width())
             throw QString("Unexpected image size change: Did you resize the screen?");
-        if (!outFrame) {
-            qint64 t00 = Util::getTime();
-            if (img_pix_fmt != codec_pix_fmt) {
-                Converter * conv = p->converters.take(img.width(), img.height(), img_pix_fmt, codec_pix_fmt);
-                QString error = "";
-
-                //auto t0 = Util::getTime();
-                QString err;
-                outFrame = conv->convert(img, err);
-                p->converters.put(conv);
-                if (!outFrame)
-                    throw err;
-                //Debug() << "Conversion took " << (Util::getTime()-t0) << " msec";
-
-            } else {
-                if (QString err; !(outFrame = Converter::trivial(img, codec_pix_fmt, err)) )
-                    throw err;
-            }
-            Debug() << "convert " << frame.num << " (alt codepath) took: " << (Util::getTime()-t00) << " ms";
-        }
+        if (!outFrame)
+            throw QString("In-line conversion in Encoder thread no longer supported. FIXME!");
 
         if (p->firstFrameNum < 0LL) p->firstFrameNum = qint64(frame.num); // remember "first frame" number seen for proper pts below...
         const qint64 fnum = qint64(frame.num) - p->firstFrameNum; // this is really an offset from start of recording
@@ -863,7 +789,7 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
             p->framesProcessed++;
 
         while ((res = avcodec_receive_packet(p->c, &p->pkt)) == 0) { // keep looping until we get -EAGAIN or some error
-            if (write_frame(p->oc, &p->c->time_base, p->video_st, &p->pkt)) { // this automatically unreferences and inits the packet
+            if (write_video_frame(&p->pkt)) { // this automatically unreferences and inits the packet
                 QString error = "Error #11: Could not write frame";
                 if (p->oc && p->oc->pb && p->oc->pb->error)
                     error += QString(": ") + strerror(qAbs(p->oc->pb->error));
@@ -880,9 +806,6 @@ int FFmpegEncoder::encode(const Frame & frame, QString *errMsg)
         retVal = -1;
         if (errMsg) *errMsg = e;
     }
-
-    // unconditionally free avframe before function exit..
-    av_frame_free(&outFrame);
 
     Debug() << "encode " << frame.num << " took: " << (Util::getTime()-t0) << " ms";
     return retVal;

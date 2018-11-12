@@ -186,6 +186,7 @@ void MainWindow::setupToolBar()
         updateToolBar();
     });
     a->setCheckable(true);
+    a->setIcon(QIcon(":/Img/status_red.png"));
     tb->addSeparator();
 
     tbActs["clock"] = a = tb->addAction("Clock OFF", this, &MainWindow::updateToolBar);
@@ -212,4 +213,5 @@ void MainWindow::updateToolBar()
     tbActs["timing"]->setText(QString("Timing %1").arg(b2s(b)));
     b = tbActs["record"]->isChecked() && rec->isRecording();
     tbActs["record"]->setText(QString("Recording %1").arg(b2s(b)));
+    tbActs["record"]->setIcon(QIcon(b ? ":/Img/status_green.png" : ":/Img/status_red.png"));
 }

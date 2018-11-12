@@ -2,5 +2,7 @@
     <qresource prefix="/">
         <file>Img/app_icon.png</file>
         <file>Img/tray_icon.png</file>
+        <file>Img/status_red.png</file>
+        <file>Img/status_green.png</file>
     </qresource>
 </RCC>

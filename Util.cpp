@@ -448,7 +448,7 @@ Log::~Log()
 
         if (QThread *th = QThread::currentThread(); th && qApp && th != qApp->thread()) {
             QString thrdName = th->objectName();
-            if (thrdName.trimmed().isEmpty()) thrdName = QString::asprintf("%lx", reinterpret_cast<long>(QThread::currentThreadId()));
+            if (thrdName.trimmed().isEmpty()) thrdName = QString::asprintf("%p", reinterpret_cast<void *>(QThread::currentThreadId()));
             thrdStr = QString("<Thread: %1> ").arg(thrdName);
         }
 

@@ -39,10 +39,11 @@ void GLVideoWidget::updateFrame(const Frame & inframe)
         index = (index + 1) % NPBOS;
         const int nextIndex = (index + 1) % NPBOS;
         if (pbos[index] && pbos[nextIndex]) {
-            // use PBOs to read pixels asynchronously in the background...
+            // use PBOs to upload texture data asynchronously...
             if (const Frame & fi = pboFrames[index]; !fi.isNull()) {
-                // set the "current texture" to be the PBO we just wrote to in the last iteration -- we have 1 frame delay but it's ok. :)
-                // note the frame image data is kept persistent for our 2 PBO buffers permanently..
+                // set the "current texture" to be the PBO we just wrote to in the last iteration --
+                // this means we have a 1-frame delay but it's preferable for the performance benefit we get.
+                // note the frame image data is kept persistent (in the pboFrames array) for a short time.
 
                 GLFUNCS_X->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[index]);
                 glTexImage2D(GL_TEXTURE_RECTANGLE, 0, TEX_STORAGE, fi.img.width(), fi.img.height(), 0, PIX_FORMAT, PIX_PACK, nullptr);
@@ -52,10 +53,9 @@ void GLVideoWidget::updateFrame(const Frame & inframe)
             const Frame & fn = (pboFrames[nextIndex] = frame);
             // bind PBO to update texture source for next frame (next frame will use THIS frame data. because we are 1 frame behind with PBOs enabled).
             GLFUNCS_X->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[nextIndex]);
-            // copy data to GPU memory -- this happens asynchronously and the requirement is that the img stays around until it's done
-            // which is why we keep the frames around in the pboFrames[] array.
+            // copy data to GPU memory -- this happens asynchronously and the requirement is that the img stays
+            // around until it's done which is why we keep the frames around in the pboFrames[] array.
             GLFUNCS_X->glBufferData(GL_PIXEL_UNPACK_BUFFER, fn.img.sizeInBytes(), fn.img.bits(), GL_STREAM_DRAW);
-            // map the buffer object into client's memory
             GLFUNCS_X->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         } else {
             glTexImage2D(GL_TEXTURE_RECTANGLE, 0, TEX_STORAGE, frame.img.width(), frame.img.height(), 0, PIX_FORMAT, PIX_PACK, frame.img.bits());

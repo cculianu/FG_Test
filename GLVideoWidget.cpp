@@ -8,10 +8,8 @@
 #include <QOpenGLExtraFunctions>
 
 #ifdef Q_OS_WIN
-extern "C" {
-typedef void *(*MAP_BUF_T)(GLenum, GLenum);
+typedef void *(APIENTRY *MAP_BUF_T)(GLenum, GLenum);
 static MAP_BUF_T glMapBuffer = nullptr;
-}
 #endif
 
 #define GLFUNCS (QOpenGLContext::currentContext()->extraFunctions())

@@ -5,6 +5,16 @@
 #include <QOpenGLTexture>
 #include <QOpenGLFunctions>
 #include <QOpenGLPixelTransferOptions>
+#include <QOpenGLExtraFunctions>
+
+#ifdef Q_OS_WIN
+extern "C" {
+typedef void *(*MAP_BUF_T)(GLenum, GLenum);
+static MAP_BUF_T glMapBuffer = nullptr;
+}
+#endif
+
+#define GLFUNCS (QOpenGLContext::currentContext()->extraFunctions())
 
 GLVideoWidget::GLVideoWidget(QWidget *parent)
     : QOpenGLWidget(parent), ps(this)
@@ -17,7 +27,7 @@ GLVideoWidget::~GLVideoWidget()
     makeCurrent();
     delete pd; pd = nullptr;
     delete tex; tex = nullptr;
-    if (pbos[0]) glDeleteBuffers(NPBOS, pbos);
+    if (pbos[0] && GLFUNCS) GLFUNCS->glDeleteBuffers(NPBOS, pbos);
 }
 
 void GLVideoWidget::updateFrame(const Frame & inframe)
@@ -25,7 +35,7 @@ void GLVideoWidget::updateFrame(const Frame & inframe)
     frame = inframe;
     if (tex && prog && !frame.isNull()) {
         constexpr int TEX_STORAGE = GL_RGB, PIX_FORMAT = GL_BGRA, PIX_PACK = GL_UNSIGNED_INT_8_8_8_8_REV; //TODO: auto-detect these...
-        const auto t0 = Util::getTime(); Q_UNUSED(t0);
+        //const auto t0 = Util::getTime(); Q_UNUSED(t0);
         makeCurrent();
         if (!tex->isCreated()) tex->create();
         glBindTexture(GL_TEXTURE_RECTANGLE, tex->textureId());
@@ -33,30 +43,30 @@ void GLVideoWidget::updateFrame(const Frame & inframe)
         glTexParameteri(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         index = (index + 1) % NPBOS;
         const int nextIndex = (index + 1) % NPBOS;
-        if (pbos[index] && pbos[nextIndex]) {
+        if (pbos[index] && pbos[nextIndex] && GLFUNCS && bool(glMapBuffer)) {
             // use PBOs to read pixels asynchronously in the background...
             if (const Frame & fi = pboFrames[index]; !fi.isNull()) {
                 // set the "current texture" to be the PBO we just wrote to in the last iteration -- we have 1 frame delay but it's ok. :)
                 // note the frame image data is kept persistent for our 2 PBO buffers permanently..
 
-                glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[index]);
+                GLFUNCS->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[index]);
                 glTexImage2D(GL_TEXTURE_RECTANGLE, 0, TEX_STORAGE, fi.img.width(), fi.img.height(), 0, PIX_FORMAT, PIX_PACK, nullptr);
                 tex->setSize(fi.img.width(), fi.img.height());
                 glBindTexture(GL_TEXTURE_RECTANGLE, 0);
             }
             const Frame & fn = (pboFrames[nextIndex] = frame);
             // bind PBO to update texture source
-            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[nextIndex]);
-            glBufferData(GL_PIXEL_UNPACK_BUFFER, fn.img.sizeInBytes(), nullptr, GL_STREAM_DRAW);
+            GLFUNCS->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[nextIndex]);
+            GLFUNCS->glBufferData(GL_PIXEL_UNPACK_BUFFER, fn.img.sizeInBytes(), nullptr, GL_STREAM_DRAW);
             // map the buffer object into client's memory
 
             if(GLubyte* ptr = reinterpret_cast<GLubyte*>(glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY)); ptr)
             {
                 // update data directly on the mapped buffer
                 memcpy(ptr, fn.img.bits(), size_t(fn.img.sizeInBytes()));
-                glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER); // release the mapped buffer
+                GLFUNCS->glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER); // release the mapped buffer
             }
-            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+            GLFUNCS->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         } else {
             glTexImage2D(GL_TEXTURE_RECTANGLE, 0, TEX_STORAGE, frame.img.width(), frame.img.height(), 0, PIX_FORMAT, PIX_PACK, frame.img.bits());
             tex->setSize(frame.img.width(), frame.img.height());
@@ -69,6 +79,22 @@ void GLVideoWidget::updateFrame(const Frame & inframe)
 
 void GLVideoWidget::initializeGL()
 {
+    QOpenGLVersionProfile profile(format());
+    auto [maj, min] = profile.version();
+    Debug("Using OpenGL Version %d.%d",maj,min);
+#ifdef Q_OS_WIN
+    if (!glMapBuffer) {
+        auto addy = wglGetProcAddress("glMapBuffer");
+        if (!addy) addy = wglGetProcAddress("glMapBufferARB");
+        if (addy) {
+            glMapBuffer = reinterpret_cast<MAP_BUF_T>(addy);
+            Debug() << "Windows fixup: found glMapBuffer!";
+        } else {
+            Debug() << "Windows fixup: did NOT find glMapBuffer!";
+        }
+    }
+#endif
+
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
     glDisable( GL_ALPHA_TEST );
@@ -79,7 +105,9 @@ void GLVideoWidget::initializeGL()
     glEnable(GL_TEXTURE_RECTANGLE);
     glShadeModel( GL_FLAT );
     glPixelStorei( GL_UNPACK_ALIGNMENT, 1 );
-    glGenBuffers(NPBOS, pbos);
+    if (GLFUNCS) GLFUNCS->glGenBuffers(NPBOS, pbos);
+    if (!pbos[0])
+        Warning() << "glGenBuffers failed -- PBOs unavailable.";
     tex = new QOpenGLTexture(QOpenGLTexture::TargetRectangle);
 }
 

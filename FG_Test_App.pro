@@ -109,7 +109,7 @@ win32 {
     # Add windows-specific stuff here
     QMAKE_CXXFLAGS += /std:c++17
     CONFIG += windows
-    LIBS += opengl32.lib $$PWD/QuaZip/winzlib/lib/zlib.lib libGLESv2.lib
+    LIBS += opengl32.lib $$PWD/QuaZip/winzlib/lib/zlib.lib
     CONFIG(debug, debug|release) {
         LIBS += $$OUT_PWD/QuaZip/quazip/debug/quazip.lib
     }

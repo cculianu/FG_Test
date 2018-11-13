@@ -60,7 +60,7 @@ void WorkerThread::postLambda(const std::function<void(void)> & lambda)
 }
 void WorkerThread::postLambda(std::function<void(void)> && lambda)
 {
-    QApplication::postEvent(this, new LambdaEvent(lambda));
+    QApplication::postEvent(this, new LambdaEvent(std::move(lambda)));
 }
 void WorkerThread::postLambdaSync(const std::function<void(void)> & lambda)
 {

@@ -37,7 +37,8 @@ SOURCES += \
     Prefs.cpp \
     Frame.cpp \
     Recorder.cpp \
-    FFmpegEncoder.cpp
+    FFmpegEncoder.cpp \
+    FrameGenerator.cpp
 
 HEADERS += \
     App.h \
@@ -54,7 +55,8 @@ HEADERS += \
     Prefs.h \
     Frame.h \
     Recorder.h \
-    FFmpegEncoder.h
+    FFmpegEncoder.h \
+    FrameGenerator.h
 
 FORMS += \
     MainWindow.ui \

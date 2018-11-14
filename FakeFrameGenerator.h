@@ -3,27 +3,25 @@
 
 #include <QImage>
 #include <QVector>
-#include "WorkerThread.h"
 #include "Frame.h"
+#include "FrameGenerator.h"
 
 class QTimer;
-class PerSec;
 
-class FakeFrameGenerator : public WorkerThread
+/// Currently generates random static.  Used for testing.
+class FakeFrameGenerator : public FrameGenerator
 {
     Q_OBJECT
 public:
     FakeFrameGenerator(int width = Frame::DefaultWidth(), int height = Frame::DefaultHeight(),
                        double fps = Frame::DefaultFPS(), int nUniqueFrames = 20);
-    ~FakeFrameGenerator();
+    ~FakeFrameGenerator() override;
 
     double requestedFPS() const { return reqfps; }
 
-signals:
-    void generatedFrame(const Frame &);
-    void fps(double);
-
-public slots:
+   /* INHERITED signals:
+    *     void generatedFrame(const Frame &);
+    *     void fps(double); */
 
 private slots:
     void genFrame();
@@ -34,7 +32,6 @@ private:
     quint64 frameNum = 0ULL;
     QTimer *t = nullptr;
     QVector<QImage> frames;
-    PerSec *ps = nullptr;
 };
 
 #endif // FAKEFRAMEGENERATOR_H

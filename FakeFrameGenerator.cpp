@@ -21,10 +21,6 @@ FakeFrameGenerator::FakeFrameGenerator(int w_in, int h_in, double fps, int nuniq
 
     postLambdaSync([this] {
         // run in thread...
-
-        ps = new PerSec(this);
-        connect(ps, SIGNAL(perSec(double)), this, SIGNAL(fps(double)));
-
         t = new QTimer(this);
         t->setSingleShot(false);
         t->setInterval(std::chrono::milliseconds(int(1000.0/reqfps)));
@@ -37,7 +33,6 @@ FakeFrameGenerator::~FakeFrameGenerator()
 {
     postLambdaSync([this]{
         delete t; t = nullptr;
-        delete ps; ps = nullptr;
     });
 }
 
@@ -90,7 +85,5 @@ void FakeFrameGenerator::genFrame()
     }
 
     emit generatedFrame(Frame(img2Send, ++frameNum));
-
-    ps->mark();
 }
 

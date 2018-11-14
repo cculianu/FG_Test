@@ -1,10 +1,10 @@
 
 win32 {
     SaperaDir = $$getenv(SaperaDir)
-    INCLUDEPATH += $${SaperaDir}/Include
-    LIBS += $${SaperaDir}/Lib/Win64/SapClassicBasic.lib $${SaperaDir}/Lib/Win64/coreapi.lib
     !isEmpty(SaperaDir) {
-        message("SaperaDir = $${SaperaDir}")
+        message("Sapera Found ---> SaperaDir = $${SaperaDir}")
+        QMAKE_INCDIR += $${SaperaDir}/Include
+        LIBS += $${SaperaDir}/Lib/Win64/SapClassicBasic.lib $${SaperaDir}/Lib/Win64/coreapi.lib
         SOURCES += \
             SaperaFG/FPGA.cpp \
             SaperaFG/PagedRingBuffer.cpp \

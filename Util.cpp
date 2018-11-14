@@ -286,7 +286,7 @@ namespace Util
                    << QLatin1String("tell application \"Finder\" to activate");
         QProcess::execute("/usr/bin/osascript", scriptArgs);
 #else
-#   error showInGraphicalShell() not implemented for this platform!
+#   warning showInGraphicalShell() not implemented for this platform!
 //        Q_UNUSED(parent)
 //        // we cannot select a file here, because no file browser really supports it...
 //        const QFileInfo fileInfo(pathIn);

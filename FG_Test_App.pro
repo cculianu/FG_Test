@@ -68,44 +68,50 @@ RESOURCES += \
     Resources.qrc \
     qdarkstyle/style.qrc
 
-win32|macx {
+win32|macx|linux {
     !contains(QT_ARCH, x86_64) {
         error("Only 64-bit builds are supported at this time. Please reconfigure your project in Qt Creator using a 64-bit Kit.")
     }
 } else {
-    error("Only Windows and macOS builds are supported at this time.")
+    error("Only Windows, macOS and Linux builds are supported at this time.")
 }
 
-macx {
-    # Add mac-specific libs, etc, here
-    #LIBS += -framework CoreServices
+macx|linux {
+    # Add mac and linux-specific libs, etc, here
     LIBS += -L$$OUT_PWD/QuaZip/quazip -lquazip -lz
 
-    # FFmpeg
-    INCLUDEPATH += $$PWD/FFmpeg/osx/include
-    fflib.dir = $$PWD/FFmpeg/osx/bin
-    fflib.flags = -L$$fflib.dir
-    fflib.all_files = $$files($$fflib.dir/*.dylib)
-    fflib.cpydest = $$OUT_PWD/$${TARGET}.app/Contents/MacOS
-    for(f, fflib.all_files) {
-        bn = $$basename(f) # bn is of the form libXXX.dylib
-        fflib.libs += $$bn  # save libXXX.dylib filename just in case we need it
-        fflib.destlibs += $${fflib.cpydest}/$${bn}
-        tmp = $$replace(bn, .dylib, ) # libXXX.dylib -> libXXX
-        tmp = $$replace(tmp, lib, -l) # libXXX -> -lXXX
-        fflib.flags += $$tmp # add -lXXX flags for below 'LIBS +='
+    macx {
+        # FFmpeg binaries -- including in this source distro
+        INCLUDEPATH += $$PWD/FFmpeg/osx/include
+        fflib.dir = $$PWD/FFmpeg/osx/bin
+        fflib.flags = -L$$fflib.dir
+        fflib.all_files = $$files($$fflib.dir/*.dylib)
+        fflib.cpydest = $$OUT_PWD/$${TARGET}.app/Contents/MacOS
+        for(f, fflib.all_files) {
+            bn = $$basename(f) # bn is of the form libXXX.dylib
+            fflib.libs += $$bn  # save libXXX.dylib filename just in case we need it
+            fflib.destlibs += $${fflib.cpydest}/$${bn}
+            tmp = $$replace(bn, .dylib, ) # libXXX.dylib -> libXXX
+            tmp = $$replace(tmp, lib, -l) # libXXX -> -lXXX
+            fflib.flags += $$tmp # add -lXXX flags for below 'LIBS +='
+        }
+        # add the above-constructed -L/bla/bla -lXXX -lYYY to the LIBS for qmake...
+        LIBS += $$fflib.flags
+        # The following copies the .dylibs to the generated .app bundle
+        cpy.target = not_a_real_file
+        cpy.commands = mkdir -vp $$fflib.cpydest; cp -fpv $$fflib.all_files $$fflib.cpydest
+        cpy.depends = cpy2
+        cpy2.commands = @echo Copying .dylibs to .app bundle...
+        QMAKE_EXTRA_TARGETS += cpy cpy2
+        POST_TARGETDEPS += not_a_real_file
+        QMAKE_CLEAN += $$fflib.destlibs
     }
-    # add the above-constructed -L/bla/bla -lXXX -lYYY to the LIBS for qmake...
-    LIBS += $$fflib.flags
-    # The following copies the .dylibs to the generated .app bundle
-    cpy.target = not_a_real_file
-    cpy.commands = mkdir -vp $$fflib.cpydest; cp -fpv $$fflib.all_files $$fflib.cpydest
-    cpy.depends = cpy2
-    cpy2.commands = @echo Copying .dylibs to .app bundle...
-    QMAKE_EXTRA_TARGETS += cpy cpy2
-    POST_TARGETDEPS += not_a_real_file
-    QMAKE_CLEAN += $$fflib.destlibs
+    linux {
+        # Just use system libs and hope for the best
+        LIBS += -lavcodec -lavdevice -lavfilter -lavformat -lavutil -lpostproc -lswresample -lswscale
+    }
 }
+
 
 win32 {
     # Add windows-specific stuff here

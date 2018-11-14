@@ -4,8 +4,6 @@ FrameGrabber Test Application for Leonadro/Chen Project. As of right now this is
 
 ## Build Instructions
 
----
-
 ### **Windows**
 
 ##### Prerequisites

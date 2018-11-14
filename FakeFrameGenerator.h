@@ -14,7 +14,7 @@ class FakeFrameGenerator : public FrameGenerator
     Q_OBJECT
 public:
     FakeFrameGenerator(int width = Frame::DefaultWidth(), int height = Frame::DefaultHeight(),
-                       double fps = Frame::DefaultFPS(), int nUniqueFrames = 20);
+                       double fps = Frame::DefaultFPS(), int nUniqueFrames = 16);
     ~FakeFrameGenerator() override;
 
     double requestedFPS() const { return reqfps; }
@@ -32,6 +32,7 @@ private:
     quint64 frameNum = 0ULL;
     QTimer *t = nullptr;
     QVector<QImage> frames;
+    int lastPick = -999;
 };
 
 #endif // FAKEFRAMEGENERATOR_H

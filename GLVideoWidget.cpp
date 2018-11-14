@@ -29,7 +29,12 @@ void GLVideoWidget::updateFrame(const Frame & inframe)
 {
     frame = inframe;
     if (tex && prog && !frame.isNull()) {
-        constexpr int TEX_STORAGE = GL_RGB, PIX_FORMAT = GL_BGRA, PIX_PACK = GL_UNSIGNED_INT_8_8_8_8_REV; //TODO: auto-detect these...
+        //TODO: auto-detect these...
+        constexpr int TEX_STORAGE = GL_RGB, PIX_FORMAT = GL_BGRA;
+        const int bpp = frame.img.depth();
+        const int PIX_PACK = bpp >= 24 ? GL_UNSIGNED_INT_8_8_8_8_REV
+                                         : bpp == 16 ? GL_UNSIGNED_SHORT_4_4_4_4_REV
+                                                     : GL_UNSIGNED_BYTE_2_3_3_REV;
         //const auto t0 = Util::getTime(); Q_UNUSED(t0);
         makeCurrent();
         if (!tex->isCreated()) tex->create();
@@ -55,10 +60,10 @@ void GLVideoWidget::updateFrame(const Frame & inframe)
             GLFUNCS_X->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbos[nextIndex]);
             // copy data to GPU memory -- this happens asynchronously and the requirement is that the img stays
             // around until it's done which is why we keep the frames around in the pboFrames[] array.
-            GLFUNCS_X->glBufferData(GL_PIXEL_UNPACK_BUFFER, fn.img.sizeInBytes(), fn.img.bits(), GL_STREAM_DRAW);
+            GLFUNCS_X->glBufferData(GL_PIXEL_UNPACK_BUFFER, fn.img.sizeInBytes(), fn.img.constBits(), GL_STREAM_DRAW);
             GLFUNCS_X->glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
         } else {
-            glTexImage2D(GL_TEXTURE_RECTANGLE, 0, TEX_STORAGE, frame.img.width(), frame.img.height(), 0, PIX_FORMAT, PIX_PACK, frame.img.bits());
+            glTexImage2D(GL_TEXTURE_RECTANGLE, 0, TEX_STORAGE, frame.img.width(), frame.img.height(), 0, PIX_FORMAT, PIX_PACK, frame.img.constBits());
             tex->setSize(frame.img.width(), frame.img.height());
             glBindTexture(GL_TEXTURE_RECTANGLE, 0);
         }

@@ -214,7 +214,7 @@ namespace {
             if (av_frame_get_buffer(frame, 0))
                 throw QString("Could not allocate AVFrame buffer");
             Picture inpic;
-            if (av_image_fill_arrays(inpic.data, inpic.linesize, img.bits(), fmt, img.width(), img.height(), 32/*QImages use align=32*/) < 0)
+            if (av_image_fill_arrays(inpic.data, inpic.linesize, img.constBits(), fmt, img.width(), img.height(), 32/*QImages use align=32*/) < 0)
                 throw QString("Could not fill arrays");
             av_image_copy(frame->data, frame->linesize, const_cast<const uint8_t **>(inpic.data), inpic.linesize, fmt, img.width(), img.height());
         } catch (const QString & e) {
@@ -271,7 +271,7 @@ namespace {
             // NB: this does a shallow copy -- just fills pointers to image planes...
             if (int size = av_image_fill_arrays(inpic.data,
                                                 inpic.linesize,
-                                                img.bits(),
+                                                img.constBits(),
                                                 av_pix_fmt_in, w, h, 32 /* align=32 for QImages, from Qt docs*/);
                     size < 0) {
                 throw QString("av_image_fill_arrays returned %1").arg(size);

@@ -78,10 +78,13 @@ void FakeFrameGenerator::genFrame()
         frames.push_back(img);
         img2Send = img; // shallow copy
     } else {
-        int which = int(double(qrand())/double(RAND_MAX) * frames.size());
-        if (which < 0) which = 0;
-        if (which >= frames.size()) which = frames.size()-1;
-        img2Send = frames[which];
+        int which = 0;
+        do {
+            which = int(double(qrand())/double(RAND_MAX) * frames.size());
+            which = qMax(which, 0);
+            which = qMin(frames.size()-1, which);
+        } while (which == lastPick);
+        img2Send = frames[lastPick = which];
     }
 
     emit generatedFrame(Frame(img2Send, ++frameNum));

@@ -1,7 +1,7 @@
 #ifndef THREAD_COMPAT_H
 #define THREAD_COMPAT_H
 
-#ifdef QT_CORE_LIB
+#ifdef XXX__QT_CORE_LIB__XXX
 // emualte the windows classes so that FG-specific code doesn't depend on Qt
 #include <QMutex>
 #include <QSemaphore>

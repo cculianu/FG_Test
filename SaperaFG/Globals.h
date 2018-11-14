@@ -31,3 +31,11 @@ extern int bpp, pitch, width, height;
 
 class FPGA;
 extern FPGA *fpga;
+
+#ifdef UNICODE
+#   define tcharify(s) (std::wstring(s.begin(), s.end()).c_str())
+#   define STRCMP(s1,s2) (wcscmp(s1,s2))
+#else
+#   define tcharify(s) (s.c_str())
+#   define STRCMP(s1,s2) (strcmp(s1,s2))
+#endif

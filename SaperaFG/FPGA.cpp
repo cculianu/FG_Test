@@ -63,7 +63,7 @@ bool FPGA::configure(const int parms[6])
     default:	PortNum = "COM1";				break;
     }
 
-    hPort1 = CreateFile(PortNum.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    hPort1 = CreateFile(tcharify(PortNum), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
     if (hPort1 != INVALID_HANDLE_VALUE)
     {
@@ -171,7 +171,7 @@ bool FPGA::setupCOM()
 {
     if (hPort1 != INVALID_HANDLE_VALUE) CloseHandle(hPort1);
 
-    hPort1 = CreateFile(PortNum.c_str(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    hPort1 = CreateFile(tcharify(PortNum), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
     if (hPort1 == INVALID_HANDLE_VALUE)
     {

@@ -1,7 +1,7 @@
 #pragma once
 
 #define PSAPI_VERSION 1
-#include <windows.h>
+#include <Windows.h>
 #include <Psapi.h>
 
 #include <stdio.h>
@@ -17,4 +17,5 @@
 #include <list>
 #include <string>
 
-#include <sapclassbasic.h>
+#include <SapClassBasic.h>
+#include <wchar.h>

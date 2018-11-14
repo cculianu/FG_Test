@@ -141,8 +141,10 @@ win32 {
     QMAKE_EXTRA_TARGETS += cpy cpy2
     POST_TARGETDEPS += not_a_real_file
     QMAKE_CLEAN += $$files($${fflib.cpydest}/*.dll)
-
 }
+
+# Sapera-specific stuff here. For now this only does anything on Windows.
+include(SaperaFG/SaperaFG.pri)
 
 INCLUDEPATH += $$PWD/QuaZip
 DEFINES += QUAZIP_STATIC

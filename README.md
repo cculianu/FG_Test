@@ -45,9 +45,12 @@ FrameGrabber Test Application for Leonadro/Chen Project. As of right now this is
 
 1. You should be on **Ubuntu 18.10 (Cosmic Cuttlefish)** or similar.  If not Ubuntu, make sure your distro offers FFmpeg 4.0+ as well as Qt 5.10 or above.
 2. **GCC 7+** or similar compiler (llvm, clang, are ok too as long as they are recent). Most recent distros are at least on this version.
-2. **Qt 5.10 or above**. Make sure you have the **Qt5SerialPort** module also installed.
+2. **Qt 5.11 or above**. Make sure you have the **Qt5SerialPort** module also installed.
 3. **FFmpeg 4.0.2 or above**.  Please be sure to install the following libs, including their development (dev) versions:
-  - **libavcodec libavdevice libavfilter libavformat libavutil libpostproc libswresample libswscale**
+  - **libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev libavutil-dev libpostproc-dev libswresample-dev libswscale-dev** 
+  - All-in-one command to install these prereqs: 
+  
+    `sudo apt install libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev libavutil-dev libpostproc-dev libswresample-dev libswscale-dev ffmpeg`
 
 ##### Building
 

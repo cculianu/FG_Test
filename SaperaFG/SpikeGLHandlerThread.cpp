@@ -1,7 +1,6 @@
 #include "CommonIncludes.h"
 #include "SpikeGLHandlerThread.h"
 #include <stdio.h>
-#include <io.h>
 #include <sys/stat.h>
 #include <stdio.h>
 #include <fcntl.h>

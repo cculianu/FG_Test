@@ -1,47 +1,62 @@
-#pragma once
-#include <windows.h>
+#ifndef THREAD_H
+#define THREAD_H
 
-class Thread
-{
-public:
-    Thread();
-    virtual ~Thread();
-
-    bool isRunning() const { return running || started_but_not_yet_running;  }
-    bool start();
-    bool wait(unsigned timeout_ms);
-    void kill();
-
-    int id() { return (int)threadId;  }
-
-protected:
-    volatile bool running, started_but_not_yet_running;
-    DWORD threadId; HANDLE threadHandle;
-    static DWORD WINAPI threadRoutine(LPVOID param);
-    virtual void threadFunc() = 0;
-};
+#ifdef QT_CORE_LIB
+// emualte the windows classes so that FG-specific code doesn't depend on Qt
+#include <QMutex>
+#include <QSemaphore>
+#include <QThread>
+#ifndef INFINITE_TO
+#define INFINITE_TO 0xffffffff
+#endif
 
 class Mutex
 {
 public:
-    Mutex();
-    ~Mutex();
+    Mutex() {}
+    ~Mutex() {}
 
-    bool lock(unsigned timeout_ms = INFINITE);
-    void unlock();
+    bool lock(unsigned timeout_ms = INFINITE_TO) { if (timeout_ms == INFINITE_TO) { mut.lock(); return true; } else return mut.tryLock(int(timeout_ms)); }
+    void unlock() { mut.unlock(); }
 
 private:
-    HANDLE h;
+    QMutex mut;
 };
 
 class Semaphore
 {
 public:
-    Semaphore(unsigned max_count, unsigned current_count = 0);
-    ~Semaphore();
+    Semaphore(unsigned max_count, unsigned current_count = 0)
+        : s(int(current_count)) { (void)max_count; }
+    ~Semaphore() {}
 
-    bool acquire(unsigned timeout_ms = INFINITE); ///< acquire 1. 
-    void release(int ct = 1); ///< add ct to the semaphore 
+    bool acquire(unsigned timeout_ms = INFINITE_TO) ///< acquire 1. negative timeout means wait forever
+    { return s.tryAcquire(1, timeout_ms == INFINITE_TO ? -1 : int(timeout_ms)); }
+    void release(int ct = 1) { s.release(ct); }
+
 private:
-    HANDLE h;
+    QSemaphore s;
 };
+
+class Thread : protected QThread
+{
+public:
+    Thread() {}
+    virtual ~Thread() override;
+
+    bool isRunning() const { return QThread::isRunning();  }
+    bool start() { QThread::start(); return true; }
+    bool wait(unsigned timeout_ms) { return QThread::wait(timeout_ms); }
+    void kill() { QThread::terminate(); }
+    int id() { return static_cast<int>(reinterpret_cast<long>(this)); }
+
+protected:
+    void run() override { threadFunc(); } /* from QThread */
+    virtual void threadFunc() = 0;
+};
+#else
+#include "Thread_Win32_Only.h"
+#endif
+
+
+#endif // THREAD_H

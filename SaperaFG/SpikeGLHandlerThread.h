@@ -2,7 +2,7 @@
 #define SpikeGLHandlerThread_H
 
 #include "XtCmd.h"
-#include "Thread.h"
+#include "Thread_Win32_Only.h"
 #include <list>
 #include <vector>
 

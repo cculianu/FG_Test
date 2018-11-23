@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "Thread_Compat.h"
+#include "Thread.h"
 
 #include <string.h>
 

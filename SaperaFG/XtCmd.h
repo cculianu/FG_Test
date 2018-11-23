@@ -11,15 +11,15 @@
 enum XtCmds {
     XtCmd_Null = 0, XtCmd_Noop = XtCmd_Null,
     XtCmd_Test, // test command. does nothing but used to test communication
-    XtCmd_Img, // got image from subprocess -> SpikeGL
-    XtCmd_ConsoleMessage, // basically ends up in SpikeGL's console
-    XtCmd_Exit, // sent from SpikeGL -> slave app to tell it to exit gracefully...
-    XtCmd_GrabFrames, // sent from SpikeGL-> slave app, tell it to start grabbing frames..
-    XtCmd_FPGAProto, // sent from SpikeGL -> slave app to do low-level FPGA protocol commands
-    XtCmd_ClkSignals, // sent from slave app -> SpikeGL to update GUI
-    XtCmd_OpenPort, // sent from SpikeGL -> slave app to start an acquisition
-    XtCmd_ServerResource, // sent SpikeGL <-> slave app (both directions) to either list the available server resources or set the active server
-    XtCmd_FPS, ///< sent from slave process -> SpikeGL to report FPS (frames per second) coming in from the camera
+    XtCmd_Img, // got image from subprocess -> Main App
+    XtCmd_ConsoleMessage, // basically ends up in Main App's console
+    XtCmd_Exit, // sent from Main App -> slave app to tell it to exit gracefully...
+    XtCmd_GrabFrames, // sent from Main App -> slave app, tell it to start grabbing frames..
+    XtCmd_FPGAProto, // sent from Main App -> slave app to do low-level FPGA protocol commands
+    XtCmd_ClkSignals, // sent from slave app -> Main App to update GUI
+    XtCmd_OpenPort, // sent from Main App -> slave app to start an acquisition
+    XtCmd_ServerResource, // sent Main App <-> slave app (both directions) to either list the available server resources or set the active server
+    XtCmd_FPS, ///< sent from slave process -> Main App to report FPS (frames per second) coming in from the camera
     XtCmd_N // num commands in enum
 };
 
@@ -32,11 +32,11 @@ struct XtCmd {
         int param; ///< generic param plus also acts as padding... to make subclass members 32-bit word-aligned..
     };
 
-    void init() { magic = XT_CMD_MAGIC; len = sizeof(int); cmd = XtCmd_Noop; param = 0; }
+    void init() { magic = int(XT_CMD_MAGIC); len = sizeof(int); cmd = XtCmd_Noop; param = 0; }
     XtCmd() { init();  }
 
     bool write(FILE *f) const { 
-        size_t n = len + offsetof(XtCmd, data);
+        size_t n = unsigned(len) + offsetof(XtCmd, data);
         size_t r = fwrite(this, n, 1, f);
         return r==1;
     }
@@ -47,25 +47,25 @@ struct XtCmd {
         int fields[3];
         size_t r, n = sizeof(int) * 3;
         r = ::fread(&fields, n, 1, f);
-        XtCmd *xt = 0;
+        XtCmd *xt = nullptr;
         if (r == 1 && fields[2] >= 0 && fields[0] == int(XT_CMD_MAGIC) && fields[2] <= (1024 * 1024 * 10)) { // make sure everything is kosher with the input, and that len is less than 10MB (hard limit to prevent program crashes)
-            if (size_t(buf.size()) < size_t(fields[2] + n)) buf.resize(fields[2] + n);
-            xt = (XtCmd *)&buf[0];
+            if (size_t(buf.size()) < size_t(fields[2]) + n) buf.resize(size_t(fields[2]) + n);
+            xt = reinterpret_cast<XtCmd *>(&buf[0]);
             xt->magic = fields[0]; xt->cmd = fields[1]; xt->len = fields[2]; xt->param = 0;
-            if ( xt->len > 0 && ::fread(xt->data, xt->len, 1, f) != 1 ) 
-                 xt = 0; // error on read, make returned pointer null
+            if ( xt->len > 0 && ::fread(xt->data, size_t(xt->len), 1, f) != 1 )
+                 xt = nullptr; // error on read, make returned pointer null
         }
         return xt;
     }
 
     static const XtCmd *parseBuf(const unsigned char *buf, int bufsz, int & num_consumed) {
         num_consumed = 0;
-        for (int i = 0; int(i+sizeof(int)) <= bufsz; ++i) {
-            int *bufi = (int *)&buf[i];
+        for (int i = 0; i+int(sizeof(int)) <= bufsz; ++i) {
+            int *bufi = const_cast<int *>(reinterpret_cast<const int *>(&buf[i]));
             int nrem = bufsz-i;
             if (*bufi == int(XT_CMD_MAGIC)) {
-                if (nrem < (int)sizeof(XtCmd)) return 0; // don't have a full struct's full of data yet, return out of this safely
-                XtCmd *xt = (XtCmd *)bufi;
+                if (nrem < int(sizeof(XtCmd))) return nullptr; // don't have a full struct's full of data yet, return out of this safely
+                XtCmd *xt = reinterpret_cast<XtCmd *>(bufi);
                 nrem -= offsetof(XtCmd,data);
                 if (xt->len <= nrem) { // make sure we have all the data in the buffer, and if so, update num_consumed and return the pointer to the data
                    nrem -= xt->len;
@@ -74,7 +74,7 @@ struct XtCmd {
                 }
             }
         }
-        return 0; // if this is reached, num_consumed is 0 and the caller should call this function again later when more data arrives
+        return nullptr; // if this is reached, num_consumed is 0 and the caller should call this function again later when more data arrives
     }
 
 };
@@ -111,7 +111,7 @@ struct XtCmdConsoleMsg : public XtCmd {
 	
     static XtCmdConsoleMsg *allocInit(const std::string & message, int mtype) {
         void *mem = malloc(sizeof(XtCmdConsoleMsg)+message.length()+1);
-        XtCmdConsoleMsg *ret = (XtCmdConsoleMsg *)mem;
+        XtCmdConsoleMsg *ret = reinterpret_cast<XtCmdConsoleMsg *>(mem);
         if (ret) ret->init(message,mtype);
         return ret;
     }
@@ -202,21 +202,21 @@ struct XtCmdGrabFrames : public XtCmd {
     int mapping[8192];
     bool use_extra_ai;
 
-    void init(const std::string & nam, unsigned shmSz, unsigned pageSz, unsigned metaSz, const std::string &ccf, unsigned w, unsigned h, unsigned scanSize, const int *map = 0, bool extraAI = false) {
+    void init(const std::string & nam, unsigned shmSz, unsigned pageSz, unsigned metaSz, const std::string &ccf, unsigned w, unsigned h, unsigned scanSize, const int *map = nullptr, bool extraAI = false) {
         XtCmd::init();
         cmd = XtCmd_GrabFrames;
         strncpy(ccfFile, ccf.c_str(), sizeof(ccfFile) - 1);  ccfFile[sizeof(ccfFile)-1] = 0;
         strncpy(shmName, nam.c_str(), sizeof(shmName) - 1);  shmName[sizeof(shmName)-1] = 0;
-        shmSize = (int)shmSz;
-        shmPageSize = (int)pageSz;
-        shmMetaSize = (int)metaSz;
+        shmSize = int(shmSz);
+        shmPageSize = int(pageSz);
+        shmMetaSize = int(metaSz);
         frameW = int(w); frameH = int(h);
-        numChansPerScan = scanSize;
+        numChansPerScan = int(scanSize);
         len = static_cast<int>((sizeof(XtCmdGrabFrames) - sizeof(XtCmd)) + sizeof(int));
         if ((use_map = !!map)) {
-            int nbytes = sizeof(*map) * scanSize;
-            if (nbytes > (int)sizeof(mapping)) nbytes = sizeof(mapping);
-            memcpy(mapping, map, nbytes);
+            int nbytes = int(sizeof(*map) * scanSize);
+            if (nbytes > int(sizeof(mapping))) nbytes = sizeof(mapping);
+            memcpy(mapping, map, size_t(nbytes));
         }
         use_extra_ai = extraAI;
     }

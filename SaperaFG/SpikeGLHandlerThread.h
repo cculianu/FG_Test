@@ -1,6 +1,7 @@
 #ifndef SpikeGLHandlerThread_H
 #define SpikeGLHandlerThread_H
 
+#include "CommonIncludes.h"
 #include "XtCmd.h"
 #include "Thread.h"
 #include <list>

@@ -23,7 +23,7 @@ public:
 
     void *getCurrentReadPage();
     /// returns NULL when a new read page isn't 'ready' yet.  nSkips is the number of pages dropped due to overflows.  Normally should be 0.
-    void *nextReadPage(int *nSkips = 0);
+    void *nextReadPage(int *nSkips = nullptr);
 
     /// clear the contents to 0.
     void bzero();
@@ -110,7 +110,7 @@ public:
     /// in samples
     unsigned scanSizeSamps() const { return scan_size_samps; }
 
-    const short *next(int *nSkips, void **metaPtr = 0, unsigned *scans_returned = 0);
+    const short *next(int *nSkips, void **metaPtr = nullptr, unsigned *scans_returned = nullptr);
 
 private:
     unsigned scan_size_samps, meta_data_size_bytes;
@@ -139,11 +139,11 @@ public:
 
 
     /// write full scans, optionally writing metadata
-    bool write(const short *scans, unsigned nScans, const void *meta = 0);
+    bool write(const short *scans, unsigned nScans, const void *meta = nullptr);
 
     /// write partial scans -- optimization for pitch != w in FG_SpikeGL.exe.. no metadata support
     void writePartialBegin();
-    bool writePartial(const void *partialData, unsigned bytes, const void *meta_of_size_metaDataSizeBytes = 0);
+    bool writePartial(const void *partialData, unsigned bytes, const void *meta_of_size_metaDataSizeBytes = nullptr);
     bool writePartialEnd(); // call this when your partial write is done and you are *sure* you have a multiple of 1 or more full scans written
 
 

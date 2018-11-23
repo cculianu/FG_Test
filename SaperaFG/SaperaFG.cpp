@@ -592,7 +592,6 @@ static void tellSpikeGLAboutSignalStatus()
             && acq->GetSignalStatus(SapAcquisition::SignalVSyncPresent, &VSyncSignal)
             )
         {
-
             XtCmdClkSignals cmd;
             cmd.init(!!PixelCLKSignal1, !!PixelCLKSignal2, !!PixelCLKSignal3, !!HSyncSignal, !!VSyncSignal);
             spikeGL->pushCmd(&cmd);

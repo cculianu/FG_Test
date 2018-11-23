@@ -1,8 +1,7 @@
 #ifndef THREAD_H
 #define THREAD_H
 
-#ifdef QT_CORE_LIB
-// emualte the windows classes so that FG-specific code doesn't depend on Qt
+// emualte the windows classes so that FG-specific code can be refactored away from Qt
 #include <QMutex>
 #include <QSemaphore>
 #include <QThread>
@@ -54,9 +53,5 @@ protected:
     void run() override { threadFunc(); } /* from QThread */
     virtual void threadFunc() = 0;
 };
-#else
-#include "Thread_Win32_Only.h"
-#endif
-
 
 #endif // THREAD_H

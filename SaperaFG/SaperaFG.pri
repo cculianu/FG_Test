@@ -22,7 +22,6 @@ win32 {
                 SaperaFG/FPGA.h \
                 SaperaFG/PagedRingBuffer.h \
                 SaperaFG/SpikeGLHandlerThread.h \
-                SaperaFG/Thread_Win32_Only.h \
                 SaperaFG/Thread.h
     } else {
         message("Sapera not found. If you wish to build with Sapera enabled, make sure SaperaDir is defined in the environment.")

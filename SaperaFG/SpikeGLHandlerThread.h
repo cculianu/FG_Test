@@ -5,14 +5,15 @@
 #include "Thread.h"
 #include <list>
 #include <vector>
+#include <atomic>
 
 class SpikeGLHandlerThread : public Thread
 {
 public:
-    volatile bool pleaseStop;
-    int maxCommandQ;
+    std::atomic_bool pleaseStop = false;
+    const int maxCommandQ = 3072;
 
-    SpikeGLHandlerThread() : pleaseStop(false), nCmd(0), maxCommandQ(3072) {}
+    SpikeGLHandlerThread()  {}
     virtual ~SpikeGLHandlerThread();
 
     bool pushCmd(const XtCmd *c, DWORD timeout_ms = INFINITE);
@@ -24,7 +25,7 @@ protected:
     virtual void threadFunc() = 0;
     typedef std::list<std::vector<BYTE> > CmdList;
     CmdList cmds;
-    volatile int nCmd;
+    std::atomic_int nCmd = 0;
     mutable Mutex mut;
 };
 

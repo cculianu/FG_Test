@@ -1,6 +1,6 @@
 #include "CommonIncludes.h"
 #include "FPGA.h"
-#include "Thread_Win32_Only.h"
+#include "Thread.h"
 
 struct FPGA::Handler : public Thread {
     HANDLE h;

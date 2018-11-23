@@ -12,15 +12,15 @@
 SpikeGLHandlerThread::~SpikeGLHandlerThread() { }
 SpikeGLOutThread::~SpikeGLOutThread() { 
     tryToStop(); 
-    if (running) kill();
+    if (isRunning()) kill();
 }
 SpikeGLInputThread::~SpikeGLInputThread() { 
     tryToStop(); 
-    if (running) kill();
+    if (isRunning()) kill();
 }
 
 void SpikeGLHandlerThread::tryToStop() {
-    if (running) { pleaseStop = true; wait(300); }
+    if (isRunning()) { pleaseStop = true; wait(300); }
 }
 
 bool SpikeGLHandlerThread::pushCmd(const XtCmd *c, DWORD timeout_ms)
@@ -34,7 +34,7 @@ bool SpikeGLHandlerThread::pushCmd(const XtCmd *c, DWORD timeout_ms)
         cmds.push_back(std::vector<BYTE>());
         ++nCmd;
         std::vector<BYTE> & v(cmds.back());
-        v.resize(c->len + (((char *)c->data) - (char *)c));
+        v.resize(static_cast<std::vector<BYTE>::size_type>(c->len + (c->data - reinterpret_cast<const BYTE *>(c))));
         ::memcpy(&v[0], c, v.size());
         mut.unlock();
         return true;
@@ -44,7 +44,7 @@ bool SpikeGLHandlerThread::pushCmd(const XtCmd *c, DWORD timeout_ms)
 
 XtCmd * SpikeGLHandlerThread::popCmd(std::vector<BYTE> &outBuf, DWORD timeout_ms)
 {
-    XtCmd *ret = 0;
+    XtCmd *ret = nullptr;
     if (mut.lock(timeout_ms)) {
         if (nCmd) {
             std::vector<BYTE> & v(cmds.front());
@@ -52,7 +52,7 @@ XtCmd * SpikeGLHandlerThread::popCmd(std::vector<BYTE> &outBuf, DWORD timeout_ms
             cmds.pop_front();
             --nCmd;
             if (outBuf.size() >= sizeof(XtCmd)) {
-                ret = (XtCmd *)&outBuf[0];
+                ret = reinterpret_cast<XtCmd *>(&outBuf[0]);
             }
         }
         mut.unlock();
@@ -89,7 +89,7 @@ void SpikeGLOutThread::threadFunc()
             nCmd = 0;
             mut.unlock();
             for (CmdList::iterator it = my.begin(); it != my.end(); ++it) {
-                XtCmd *c = (XtCmd *)&((*it)[0]);
+                XtCmd *c = reinterpret_cast<XtCmd *>(&((*it)[0]));
                 if (!c->write(stdout)) {
                     // todo.. handle error here...
                 }
@@ -105,7 +105,7 @@ void SpikeGLInputThread::threadFunc()
 {
     _setmode(_fileno(stdin), O_BINARY);
     std::vector<BYTE> buf;
-    XtCmd *xt = 0;
+    XtCmd *xt = nullptr;
     while (!pleaseStop) {
         if ((xt = XtCmd::read(buf, stdin))) {
             if (!pushCmd(xt)) {

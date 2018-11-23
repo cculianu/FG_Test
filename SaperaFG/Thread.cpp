@@ -1,7 +1,6 @@
+#include "Thread.h"
 #ifndef QT_CORE_LIB
 #include "CommonIncludes.h"
-#include "Thread_Win32_Only.h"
-
 
 Thread::Thread()
     : running(false), started_but_not_yet_running(false), threadId(0), threadHandle(0)
@@ -106,6 +105,5 @@ void Semaphore::release(int ct) {
     }
 }
 #else // defined QT_CORE_LIB
-#include "Thread.h"
 Thread::~Thread() {} // for vtable
 #endif // !defined QT_CORE_LIB

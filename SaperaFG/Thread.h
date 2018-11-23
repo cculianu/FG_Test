@@ -48,7 +48,7 @@ public:
     bool start() { QThread::start(); return true; }
     bool wait(unsigned timeout_ms) { return QThread::wait(timeout_ms); }
     void kill() { QThread::terminate(); }
-    int id() { return static_cast<int>(reinterpret_cast<long>(this)); }
+    int id() { return static_cast<int>(reinterpret_cast<long long>(this)); }
 
 protected:
     void run() override { threadFunc(); } /* from QThread */

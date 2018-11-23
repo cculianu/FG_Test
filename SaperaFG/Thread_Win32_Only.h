@@ -1,5 +1,6 @@
+#ifndef QT_CORE_LIB
 #pragma once
-#include <windows.h>
+#include <Windows.h>
 
 class Thread
 {
@@ -45,3 +46,4 @@ public:
 private:
     HANDLE h;
 };
+#endif //!QT_CORE_LIB

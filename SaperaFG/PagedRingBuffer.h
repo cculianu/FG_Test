@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "Thread.h"
+#include <QSemaphore>
 
 #include <string.h>
 
@@ -159,13 +160,12 @@ private:
     unsigned nScansPerPage, nBytesPerPage, pageOffset /*in scans*/, partial_offset /* in bytes */, partial_bytes_written, partial_rem;
     unsigned long long scanCt, sampleCt;
 
-    class ScanRemapper : public Thread, public Semaphore {
+    class ScanRemapper : public Thread, public QSemaphore {
     public:
         ErrFunc_t ErrFunc, DbgFunc;
 
         ScanRemapper(short *page, unsigned nScansPerPage, unsigned scanLen, const std::vector<int> & mapping);
         ~ScanRemapper();
-        void wait() { Thread::wait(0xffffffff); }
     protected:
         void threadFunc();
     private:

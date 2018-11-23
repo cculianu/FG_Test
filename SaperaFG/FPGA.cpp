@@ -5,7 +5,7 @@
 struct FPGA::Handler : public Thread {
     HANDLE h;
     volatile bool pleaseStop;
-    Mutex mut;
+    QMutex mut;
     std::list<std::string> q, rq;
     bool debugFlag[64];
 
@@ -25,9 +25,9 @@ FPGA::Handler::~Handler() {
 }
 
 FPGA::FPGA(const int parms[6])
-    : hPort1(INVALID_HANDLE_VALUE), is_ok(false), handler(0)
+    : hPort1(INVALID_HANDLE_VALUE), is_ok(false), handler(nullptr)
 {
-    if (is_ok = configure(parms)) {
+    if ((is_ok = configure(parms))) {
         handler = new Handler(hPort1);
         handler->start();
 
@@ -283,7 +283,7 @@ int FPGA::Handler::readAllLines(std::string & partial)
 {
     int ct = 0;
     while ((!partial.empty() && partial.back() == '\n') || readLine(partial)) {
-        if (mut.lock(10)) {
+        if (mut.tryLock(10)) {
             rq.push_back(partial);
             mut.unlock();
             ++ct;
@@ -304,7 +304,7 @@ void FPGA::Handler::threadFunc()
         int nxferred = 0;
         if (partial.length() < 512) partial.reserve(512);
         std::list<std::string> my;
-        if (mut.lock(10)) {
+        if (mut.tryLock(10)) {
             my.swap(q);
             mut.unlock();
         }
@@ -330,23 +330,17 @@ void FPGA::Handler::threadFunc()
 
 void FPGA::write(const std::string &s) { ///< queued write.. returns immediately, writes in another thread
     if (!handler) return;
-    if (handler->mut.lock()) {
-        handler->q.push_back(s);
-        handler->mut.unlock();
-    } else {
-        spikeGL->pushConsoleWarning("INTERNAL ERROR -- FPGA::write() could not obtain a required mutex!");
-    }
+    handler->mut.lock();
+    handler->q.push_back(s);
+    handler->mut.unlock();
 }
 
 void FPGA::readAll(std::list<std::string> & ret) { ///< reads all data available, returns immediately, may return an empty list if no data is available
     ret.clear();
     if (handler) {
-        if (handler->mut.lock()) {
-            ret.swap(handler->rq);
-            handler->mut.unlock();
-        } else {
-            spikeGL->pushConsoleWarning("INTERNAL ERROR -- FPGA::readAll() could not obtain a required mutex!");
-        }
+        handler->mut.lock();
+        ret.swap(handler->rq);
+        handler->mut.unlock();
     }
 }
 

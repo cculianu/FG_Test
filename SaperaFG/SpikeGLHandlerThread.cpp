@@ -24,7 +24,7 @@ void SpikeGLHandlerThread::tryToStop() {
 
 bool SpikeGLHandlerThread::pushCmd(const XtCmd *c, DWORD timeout_ms)
 {
-    if (mut.lock(timeout_ms)) {
+    if (mut.tryLock(int(timeout_ms))) {
         if (nCmd >= maxCommandQ) {
             // todo.. handle command q overflow here!
             mut.unlock();
@@ -44,7 +44,7 @@ bool SpikeGLHandlerThread::pushCmd(const XtCmd *c, DWORD timeout_ms)
 XtCmd * SpikeGLHandlerThread::popCmd(std::vector<BYTE> &outBuf, DWORD timeout_ms)
 {
     XtCmd *ret = nullptr;
-    if (mut.lock(timeout_ms)) {
+    if (mut.tryLock(int(timeout_ms))) {
         if (nCmd) {
             std::vector<BYTE> & v(cmds.front());
             outBuf.swap(v);
@@ -61,11 +61,9 @@ XtCmd * SpikeGLHandlerThread::popCmd(std::vector<BYTE> &outBuf, DWORD timeout_ms
 
 int SpikeGLHandlerThread::cmdQSize() const
 {
-    int ret = -1;
-    if (mut.lock()) {
-        ret = nCmd;
-        mut.unlock();
-    }
+    mut.lock();
+    int ret = nCmd;
+    mut.unlock();
     return ret;
 }
 
@@ -82,7 +80,7 @@ void SpikeGLOutThread::threadFunc()
     _setmode(_fileno(stdout), O_BINARY);
     while (!pleaseStop) {
         int ct = 0;
-        if (mut.lock(100)) {
+        if (mut.tryLock(100)) {
             CmdList my;
             my.splice(my.begin(), cmds);
             nCmd = 0;

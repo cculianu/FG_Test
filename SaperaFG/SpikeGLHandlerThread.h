@@ -4,6 +4,7 @@
 #include "CommonIncludes.h"
 #include "XtCmd.h"
 #include "Thread.h"
+#include <QMutex>
 #include <list>
 #include <vector>
 #include <atomic>
@@ -27,7 +28,7 @@ protected:
     typedef std::list<std::vector<BYTE> > CmdList;
     CmdList cmds;
     std::atomic_int nCmd = 0;
-    mutable Mutex mut;
+    mutable QMutex mut;
 };
 
 class SpikeGLOutThread : public SpikeGLHandlerThread

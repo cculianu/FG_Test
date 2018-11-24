@@ -2,8 +2,8 @@
 #include "PagedRingBuffer.h"
 #include <string.h>
 
-PagedRingBuffer::PagedRingBuffer(void *m, unsigned long sz, unsigned long psz)
-    : memBuffer(m), mem(reinterpret_cast<char *>(m)+sizeof(unsigned int)), real_size_bytes(sz), avail_size_bytes(sz-sizeof(unsigned int)), page_size(psz)
+PagedRingBuffer::PagedRingBuffer(void *m, unsigned long sz, unsigned long psz, unsigned int magic_in)
+    : magic(magic_in), memBuffer(m), mem(reinterpret_cast<char *>(m)+sizeof(unsigned int)), real_size_bytes(sz), avail_size_bytes(sz-sizeof(unsigned int)), page_size(psz)
 {
     resetToBeginning();
 }
@@ -23,7 +23,7 @@ void *PagedRingBuffer::getCurrentReadPage()
     if (pageIdx < 0 || pageIdx >= int(npages)) return nullptr;
     Header *h = reinterpret_cast<Header *>(&mem[ (page_size+sizeof(Header)) * size_t(pageIdx) ]);
     Header hdr; memcpy(&hdr, h, sizeof(hdr)); // hopefully avoid some potential race conditions
-    if (hdr.magic != unsigned(PAGED_RINGBUFFER_MAGIC) || hdr.pageNum != lastPageRead) return nullptr;
+    if (hdr.magic != magic || hdr.pageNum != lastPageRead) return nullptr;
     return reinterpret_cast<char *>(h)+sizeof(Header);
 }
 
@@ -34,7 +34,7 @@ void *PagedRingBuffer::nextReadPage(int *nSkips)
     if (nxt < 0) nxt = 0;
     Header *h = reinterpret_cast<Header *>(&mem[ (page_size+sizeof(Header)) * size_t(nxt) ]);
     Header hdr; memcpy(&hdr, h, sizeof(hdr)); // hopefully avoid some potential race conditions
-    if (hdr.magic == unsigned(PAGED_RINGBUFFER_MAGIC) && hdr.pageNum >= lastPageRead+1U) {
+    if (hdr.magic == magic && hdr.pageNum >= lastPageRead+1U) {
         if (nSkips) *nSkips = int(hdr.pageNum-(lastPageRead+1)); // record number of overflows/lost pages here!
         lastPageRead = hdr.pageNum;
         pageIdx = nxt;
@@ -49,8 +49,8 @@ void PagedRingBuffer::bzero() {
     if (mem && avail_size_bytes) memset(mem, 0, avail_size_bytes);
 }
 
-PagedRingBufferWriter::PagedRingBufferWriter(void *mem, unsigned long sz, unsigned long psz)
-    : PagedRingBuffer(mem, sz, psz)
+PagedRingBufferWriter::PagedRingBufferWriter(void *mem, unsigned long sz, unsigned long psz, unsigned int magic_in)
+    : PagedRingBuffer(mem, sz, psz, magic_in)
 {
     lastPageWritten = 0;
     nWritten = 0;
@@ -85,7 +85,7 @@ bool PagedRingBufferWriter::commitCurrentWritePage()
     Header *h = reinterpret_cast<Header *>(&mem[ (page_size+sizeof(Header)) * size_t(pg) ]);
     pageIdx = pg;
     h->pageNum = *latestPNum = ++lastPageWritten;
-    h->magic = unsigned(PAGED_RINGBUFFER_MAGIC);
+    h->magic = magic;
     ++nWritten;
     return true;
 }

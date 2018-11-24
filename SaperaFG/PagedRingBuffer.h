@@ -8,12 +8,12 @@
 
 #include <string.h>
 
-#define PAGED_RINGBUFFER_MAGIC 0xbaba7fead
-
 class PagedRingBuffer
 {
 public:
-    PagedRingBuffer(void *mem, unsigned long size_bytes, unsigned long page_size);
+    static constexpr unsigned int DefaultMagic = 0xbaba7fed;
+
+    PagedRingBuffer(void *mem, unsigned long size_bytes, unsigned long page_size, unsigned int magic = DefaultMagic);
 
     unsigned long pageSize() const { return page_size; }
     unsigned long totalSize() const { return real_size_bytes; }
@@ -38,6 +38,7 @@ public:
     unsigned int latestPageRead() const { return lastPageRead; }
 
 protected:
+    const unsigned int magic;
     union {
         void *memBuffer;
         volatile unsigned int *latestPNum;
@@ -62,7 +63,7 @@ protected:
 class PagedRingBufferWriter : public PagedRingBuffer
 {
 public:
-    PagedRingBufferWriter(void *mem, unsigned long size_bytes, unsigned long page_size);
+    PagedRingBufferWriter(void *mem, unsigned long size_bytes, unsigned long page_size, unsigned int magic = DefaultMagic);
     virtual ~PagedRingBufferWriter();
 
     unsigned long nPagesWritten() const { return nWritten; }

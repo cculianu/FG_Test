@@ -4,17 +4,12 @@
 #include <functional>
 #include <string>
 #include <vector>
-#include <Windows.h>
+#include "CommonIncludes.h"
 
-class SapAcquisition;
-class SapBuffer;
-class SapTransfer;
-class SapXferCallbackInfo;
-class SapAcqCallbackInfo;
-class SapManCallbackInfo;
 class FPGA;
-class SpikeGLOutThread;
-class SpikeGLInputThread;
+class XtCmdQueue;
+class XtCmdQueueOut;
+class XtCmdQueueIn;
 class PagedScanWriter;
 struct XtCmd;
 
@@ -24,6 +19,11 @@ class SaperaFG : public WorkerThread {
 public:
     SaperaFG(const std::string & configFileName = "");
     ~SaperaFG();
+
+signals:
+    void fps(double);
+    void clockSignals(bool pixClk1, bool pixClk2, bool pixClk3, bool hsync, bool vsync);
+    void serverResource(QString serverName, QString resourceName, int serverIndex, int resourceIndex, int serverType, bool accessible);
 
 private:
     static double getTime();
@@ -51,20 +51,22 @@ private:
 
     void resetHardware(int serverIndex, int timeout_ms = 3500 /* default 3.5 sec reset timeout */);
     bool setupAndStartAcq();
-    void handleSpikeGLCommand(XtCmd *xt);
-    void tellSpikeGLAboutSignalStatus();
+    void handleXtCommand(XtCmd *xt);
+    void publishSignalStatus();
     void probeHardware();
 
+    void gotCmd(XtCmdQueue *q);
+    void translateOutCmd(XtCmdQueue *q);
+
 private:
-    static SaperaFG *instance;
     SapAcquisition *acq = nullptr;
     SapBuffer      *buffers = nullptr;
     SapTransfer    *xfer = nullptr;
     std::string configFilename = "J_2000+_Electrode_8tap_8bit.ccf";
     int serverIndex = -1, resourceIndex = -1;
 
-    SpikeGLOutThread    *spikeGL = nullptr;
-    SpikeGLInputThread  *spikeGLIn = nullptr;
+    XtCmdQueueOut    *xtOut = nullptr;
+    XtCmdQueueIn  *xtIn = nullptr;
     UINT_PTR timerId = 0;
     bool gotFirstXferCallback = false, gotFirstStartFrameCallback = false;
     int bpp, pitch, width=0, height=0;

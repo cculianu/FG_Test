@@ -2,7 +2,7 @@
 #include "Globals.h"
 #include "FPGA.h"
 #include "Thread.h"
-#include "SpikeGLHandlerThread.h"
+#include "XtCmdQueue.h"
 
 struct FPGA::Handler : public Thread {
     HANDLE h;
@@ -10,10 +10,9 @@ struct FPGA::Handler : public Thread {
     QMutex mut;
     std::list<std::string> q, rq;
     bool debugFlag[64];
-    SpikeGLOutThread *spikeGL;
-    SpikeGLInputThread *spikeGLIn;
+    XtCmdQueueOut *xtOut;
 
-    Handler(HANDLE h, SpikeGLOutThread *sOut, SpikeGLInputThread *sIn) : h(h), spikeGL(sOut), spikeGLIn(sIn) { memset(debugFlag, 0, sizeof(debugFlag)); }
+    Handler(HANDLE h, XtCmdQueueOut *sOut) : h(h), xtOut(sOut) { memset(debugFlag, 0, sizeof(debugFlag)); }
     ~Handler(); 
 
     void threadFunc(); ///< from Thread
@@ -28,11 +27,11 @@ FPGA::Handler::~Handler() {
     }
 }
 
-FPGA::FPGA(const int parms[6], SpikeGLOutThread *sOut, SpikeGLInputThread *sIn)
-    : spikeGL(sOut), spikeGLIn(sIn)
+FPGA::FPGA(const int parms[6], XtCmdQueueOut *sOut)
+    : xtOut(sOut)
 {
     if ((is_ok = configure(parms))) {
-        handler = new Handler(hPort1, spikeGL, spikeGLIn);
+        handler = new Handler(hPort1, xtOut);
         handler->start();
 
         // auto-reset dout and leds..
@@ -166,7 +165,7 @@ bool FPGA::configure(const int parms[6])
     char buf[512];
     _snprintf_c(buf, sizeof(buf), "%s %d, %d, %s, %s", PortNum.c_str(), Port1DCB.BaudRate, Port1DCB.ByteSize, str1.c_str(), str2.c_str());
     PortConfig = buf;
-    spikeGL->pushConsoleDebug(PortConfig);
+    xtOut->pushConsoleDebug(PortConfig);
 
     return setupCOM();
 }
@@ -179,7 +178,7 @@ bool FPGA::setupCOM()
 
     if (hPort1 == INVALID_HANDLE_VALUE)
     {
-        spikeGL->pushConsoleWarning("Port Open Failed");
+        xtOut->pushConsoleWarning("Port Open Failed");
         return false;
     }
 
@@ -190,7 +189,7 @@ bool FPGA::setupCOM()
 
     if (!GetCommState(hPort1, &tmpDcb))	// Get the default port setting information.
     {
-        spikeGL->pushConsoleWarning("GetCommState Failed");
+        xtOut->pushConsoleWarning("GetCommState Failed");
         CloseHandle(hPort1); hPort1 = INVALID_HANDLE_VALUE;
         return false;
     }
@@ -217,14 +216,14 @@ bool FPGA::setupCOM()
     //Re-configure the port with the new DCB structure. 
     if (!SetCommState(hPort1, &tmpDcb))
     {
-        spikeGL->pushConsoleWarning("SetCommState Failed");
+        xtOut->pushConsoleWarning("SetCommState Failed");
         CloseHandle(hPort1); hPort1 = INVALID_HANDLE_VALUE;
         return false;
     }
 
     if (!GetCommState(hPort1, &Port1DCB))	// Get and save the new port setting information.
     {
-        spikeGL->pushConsoleWarning("GetCommState Failed");
+        xtOut->pushConsoleWarning("GetCommState Failed");
         CloseHandle(hPort1); hPort1 = INVALID_HANDLE_VALUE;
         return false;
     }
@@ -236,7 +235,7 @@ bool FPGA::setupCOM()
     {
         char buf[128];
         _snprintf_c(buf, sizeof(buf), "CommTimeouts calculation --> Baud rate: %d ~= %d msPerChar", Port1DCB.BaudRate, msPerChar);
-        spikeGL->pushConsoleDebug(buf);
+        xtOut->pushConsoleDebug(buf);
     }
     CommTimeouts.ReadIntervalTimeout =  DWORD(msPerChar*2);
     CommTimeouts.ReadTotalTimeoutConstant = 10;
@@ -247,7 +246,7 @@ bool FPGA::setupCOM()
     // Set the time-out parameters for all read and write operations on the port. 
     if (!SetCommTimeouts(hPort1, &CommTimeouts))
     {
-        spikeGL->pushConsoleWarning("SetCommTimeouts Failed");
+        xtOut->pushConsoleWarning("SetCommTimeouts Failed");
         CloseHandle(hPort1); hPort1 = INVALID_HANDLE_VALUE;
         return false;
     }
@@ -255,7 +254,7 @@ bool FPGA::setupCOM()
     // Clear the port of any existing data. 
     if (PurgeComm(hPort1, PURGE_TXCLEAR | PURGE_RXCLEAR) == 0)
     {
-        spikeGL->pushConsoleWarning("Clearing The Port Failed");
+        xtOut->pushConsoleWarning("Clearing The Port Failed");
         CloseHandle(hPort1); hPort1 = INVALID_HANDLE_VALUE;
         return false;
     }
@@ -272,14 +271,14 @@ bool FPGA::Handler::readLine(std::string & partial)
             if (c == '\n') return true;
         } else {
             if (!debugFlag[0]) {
-                spikeGL->pushConsoleDebug("FPGA::Handler::readLine() read 0 bytes... so partial reads works OK! Yay!");
+                xtOut->pushConsoleDebug("FPGA::Handler::readLine() read 0 bytes... so partial reads works OK! Yay!");
                 debugFlag[0] = true;
             }
             return false;
         }
         nb = 0;
     }
-    spikeGL->pushConsoleDebug("FPGA::Handler::readLine() ReadFile() returned FALSE... WTF?");
+    xtOut->pushConsoleDebug("FPGA::Handler::readLine() ReadFile() returned FALSE... WTF?");
     return false;
 }
 
@@ -291,10 +290,10 @@ int FPGA::Handler::readAllLines(std::string & partial)
             rq.push_back(partial);
             mut.unlock();
             ++ct;
-            spikeGL->pushConsoleDebug(std::string("FPGA::Handler::readAllLines() -- read from COM ") + partial);
+            xtOut->pushConsoleDebug(std::string("FPGA::Handler::readAllLines() -- read from COM ") + partial);
             partial.clear();
         } else {
-            spikeGL->pushConsoleDebug("FPGA::Handler::readAllLines() -- Waiting on mutex...");
+            xtOut->pushConsoleDebug("FPGA::Handler::readAllLines() -- Waiting on mutex...");
         }
     }
     return ct;
@@ -314,16 +313,16 @@ void FPGA::Handler::threadFunc()
         }
         for (std::list<std::string>::const_iterator it = my.begin(); it != my.end(); ++it) {
             DWORD nb = 0, len = DWORD((*it).length());
-            spikeGL->pushConsoleDebug(std::string("Attempt to write: ") + *it);
+            xtOut->pushConsoleDebug(std::string("Attempt to write: ") + *it);
             if (!WriteFile(h, (*it).c_str(), len, &nb, nullptr)) {
-                spikeGL->pushConsoleDebug("FPGA::Handler::threadFunc() -- WriteFile() returned FALSE!");
+                xtOut->pushConsoleDebug("FPGA::Handler::threadFunc() -- WriteFile() returned FALSE!");
             } else if (nb != len) {
                 char buf[512];
                 _snprintf_c(buf, sizeof(buf), "FPGA::Handler::threadFunc() -- WriteFile() returned %d, expected %d! (write timeout?)", int(nb), int(len));
-                spikeGL->pushConsoleDebug(buf);
+                xtOut->pushConsoleDebug(buf);
             } else {
                 ++nxferred;
-                spikeGL->pushConsoleDebug(std::string("Wrote to COM --> ") + *it);
+                xtOut->pushConsoleDebug(std::string("Wrote to COM --> ") + *it);
             }
             nxferred += readAllLines(partial);
         }

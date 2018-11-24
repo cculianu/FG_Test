@@ -6,35 +6,32 @@
 #include "XtCmd.h"
 #include "FPGA.h"
 #include "PagedRingBuffer.h"
-#include "SpikeGLHandlerThread.h"
+#include "XtCmdQueue.h"
+#include "Util.h"
 
 #include <varargs.h>
 #include <utility>
 
-SaperaFG *SaperaFG::instance = nullptr; /* TODO: remove this .. this is only used for PSW*Funcs below.. */
-
 /*static*/ int SaperaFG::PSWDbgFunc(const char *fmt, ...)
 {
-    if (!instance || !instance->spikeGL) return -1;
     char buf[1024];
     va_list l;
     int ret = 0;
     va_start(l, fmt);
     ret = vsnprintf_s(buf, sizeof(buf), fmt, l);
-    instance->spikeGL->pushConsoleDebug(buf);
+    Debug("%s", buf);
     va_end(l);
     return ret;
 }
 
 /*static*/ int SaperaFG::PSWErrFunc(const char *fmt, ...)
 {
-    if (!instance || !instance->spikeGL) return -1;
     char buf[1024];
     va_list l;
     int ret = 0;
     va_start(l, fmt);
     ret = vsnprintf_s(buf, sizeof(buf), fmt, l);
-    instance->spikeGL->pushConsoleError(buf);
+    Error("%s", buf);
     va_end(l);
     return ret;
 }
@@ -48,9 +45,9 @@ SaperaFG *SaperaFG::instance = nullptr; /* TODO: remove this .. this is only use
 void SaperaFG::acqCallback()
 {
     if (!gotFirstXferCallback)
-        (void)spikeGL->pushConsoleDebug("acqCallback called at least once! Yay!"), gotFirstXferCallback = true;
+        (void)xtOut->pushConsoleDebug("acqCallback called at least once! Yay!"), gotFirstXferCallback = true;
     if (!buffers) {
-        spikeGL->pushConsoleDebug("INTERNAL ERROR... acqCallback called with 'buffers' pointer NULL!");
+        xtOut->pushConsoleDebug("INTERNAL ERROR... acqCallback called with 'buffers' pointer NULL!");
         return;
     }
     if (!width) {
@@ -63,7 +60,7 @@ void SaperaFG::acqCallback()
     if (w < desiredWidth || h < desiredHeight) {
         char tmp[512];
         _snprintf_c(tmp, sizeof(tmp), "acqCallback got a frame of size %dx%d, but expected a frame of size %dx%d", w, h, desiredWidth, desiredHeight);
-        spikeGL->pushConsoleError(tmp);
+        xtOut->pushConsoleError(tmp);
         xfer->Abort();
         return;
     }
@@ -74,12 +71,12 @@ void SaperaFG::acqCallback()
     const size_t oneScanBytes = nChansPerScan * sizeof(short);
 
     if (!sharedMemory) {
-        spikeGL->pushConsoleError("INTERNAL ERROR.. not attached to shm, cannot send frames!");
+        xtOut->pushConsoleError("INTERNAL ERROR.. not attached to shm, cannot send frames!");
         xfer->Abort();
         return;
     }
     if (!writer->scansPerPage()) {
-        spikeGL->pushConsoleError("INTERNAL ERROR.. shm page, cannot fit at least 1 scan! FIXME!");
+        xtOut->pushConsoleError("INTERNAL ERROR.. shm page, cannot fit at least 1 scan! FIXME!");
         xfer->Abort();
         return;
     }
@@ -87,7 +84,7 @@ void SaperaFG::acqCallback()
     size_t nScansInFrame = (len + (extraAI ? 4 : 0)) / oneScanBytes;
 
     if (!nScansInFrame) {
-        spikeGL->pushConsoleError("Frame must contain at least 1 full scan! FIXME!");
+        xtOut->pushConsoleError("Frame must contain at least 1 full scan! FIXME!");
         xfer->Abort();
         return;
     }
@@ -97,7 +94,7 @@ void SaperaFG::acqCallback()
     buffers->GetAddress(const_cast<void **>(reinterpret_cast<const void **>(&pData)));			// Get image buffer start memory address.
 
     if (!pData) {
-        spikeGL->pushConsoleError("SapBuffers::GetAddress() returned a NULL pointer!");
+        xtOut->pushConsoleError("SapBuffers::GetAddress() returned a NULL pointer!");
         xfer->Abort();
         return;
     }
@@ -118,13 +115,13 @@ void SaperaFG::acqCallback()
         // and we take the ENTIRE line (all the way up to pitch bytes) for data.  The first 8 bytes in the line is the timestamp
         // See emails form Jim Chen in March 2016
         if (pitch - w != 8) {
-            spikeGL->pushConsoleError("Unsupported frame format! We are expecting a frame where pitch is 8 bytes larger than width!");
+            xtOut->pushConsoleError("Unsupported frame format! We are expecting a frame where pitch is 8 bytes larger than width!");
             buffers->ReleaseAddress(const_cast<void *>(reinterpret_cast<const void *>(pData)));
             xfer->Abort();
             return;
         }
         if (nScansInFrame != 1) {
-            spikeGL->pushConsoleError("Unsupported frame format! We are expecting a frame where there is exactly one complete scan per frame!");
+            xtOut->pushConsoleError("Unsupported frame format! We are expecting a frame where there is exactly one complete scan per frame!");
             buffers->ReleaseAddress(const_cast<void *>(reinterpret_cast<const void *>(pData)));
             xfer->Abort();
             return;
@@ -163,7 +160,7 @@ void SaperaFG::acqCallback()
                 metaPtrInc();
             }
             if (!writer->writePartial(pc + /* <HACK> */ 8 /* </HACK> */ + (line*pitch), unsigned(w), metaPtr)) {
-                spikeGL->pushConsoleError("PagedScanWriter::writePartial() returned false!");
+                xtOut->pushConsoleError("PagedScanWriter::writePartial() returned false!");
                 buffers->ReleaseAddress(const_cast<void *>(reinterpret_cast<const void *>(pData)));
                 writer->writePartialEnd();
                 xfer->Abort();
@@ -175,7 +172,7 @@ void SaperaFG::acqCallback()
                 ais[0] = static_cast<short>(int(ais_in[0]) - 32768); // convert unsigned to signed 16 bit
                 ais[1] = static_cast<short>(int(ais_in[1]) - 32768); // ditto
                 if (!writer->writePartial(reinterpret_cast<const char *>(ais), 4, metaPtr)) {
-                    spikeGL->pushConsoleError("PagedScanWriter::writePartial() for AI chans returned false!");
+                    xtOut->pushConsoleError("PagedScanWriter::writePartial() for AI chans returned false!");
                     writer->writePartialEnd();
                     xfer->Abort();
                     return;
@@ -205,7 +202,7 @@ void SaperaFG::acqCallback()
         }
 
         if (!writer->writePartialEnd()) {
-            spikeGL->pushConsoleError("PagedScanWriter::writePartialEnd() returned false!");
+            xtOut->pushConsoleError("PagedScanWriter::writePartialEnd() returned false!");
             buffers->ReleaseAddress(const_cast<void *>(reinterpret_cast<const void *>(pData)));
             xfer->Abort();
             return;
@@ -227,7 +224,7 @@ void SaperaFG::acqCallback()
         */
 
         if (!writer->write(pData, unsigned(nScansInFrame),metaPtr)) {
-            spikeGL->pushConsoleError("PagedScanWriter::write returned false!");
+            xtOut->pushConsoleError("PagedScanWriter::write returned false!");
             buffers->ReleaseAddress(const_cast<void *>(reinterpret_cast<const void *>(pData))); // Need to release it to return it to the hardware!
             xfer->Abort();
             return;
@@ -260,7 +257,7 @@ void SaperaFG::acqCallback()
         ctr = 0;
         XtCmdFPS fps;
         fps.init(rate);
-        spikeGL->pushCmd(&fps);
+        xtOut->pushCmd(&fps);
     }
     lastTS = now;
 
@@ -275,7 +272,7 @@ void SaperaFG::acqCallback()
 void SaperaFG::startFrameCallback()
 {
     if (!gotFirstStartFrameCallback)
-        (void)spikeGL->pushConsoleDebug("'startFrameCallback' called at least once! Yay!"), gotFirstStartFrameCallback = true;
+        (void)xtOut->pushConsoleDebug("'startFrameCallback' called at least once! Yay!"), gotFirstStartFrameCallback = true;
 }
 
 void SaperaFG::freeSapHandles()
@@ -298,10 +295,10 @@ void SaperaFG::freeSapHandles()
 
 void SaperaFG::sapAcqCallback(quint64 t)
 {
-    if (spikeGL) {
+    if (xtOut) {
         char buf[2048];
         _snprintf_c(buf, sizeof(buf), "SAP ACQ CALLBACK CALLED WITH eventtype=%d", int(t));
-        spikeGL->pushConsoleDebug(buf);
+        xtOut->pushConsoleDebug(buf);
     }
     std::string msg = "";
     //SapAcquisition::EventNoPixelClk|SapAcquisition::EventFrameLost|SapAcquisition::EventPixelClk|SapAcquisition::EventDataOverflow
@@ -310,8 +307,8 @@ void SaperaFG::sapAcqCallback(quint64 t)
     if (t & SapAcquisition::EventFrameLost) msg = msg + " Frame Lost!";
     if (t & SapAcquisition::EventDataOverflow) msg = msg + " Data Overflow!";
     if (!msg.size()) return;
-    if (spikeGL) {
-        spikeGL->pushConsoleError(std::string("(SAP Acq Event) ") + msg);
+    if (xtOut) {
+        xtOut->pushConsoleError(std::string("(SAP Acq Event) ") + msg);
     } else
         fprintf(stderr, "(SAP Acq Event) %s\n", msg.c_str());
 }
@@ -335,8 +332,8 @@ void SaperaFG::sapAcqCallback(quint64 t)
 void SaperaFG::sapStatusCallback(quint64 t, const std::string &errorMessage)
 {
     if (!errorMessage.empty()) {
-        if (spikeGL) {
-            spikeGL->pushConsoleDebug(std::string("(SAP Status) ") + errorMessage);
+        if (xtOut) {
+            xtOut->pushConsoleDebug(std::string("(SAP Status) ") + errorMessage);
         } else {
             fprintf(stderr, "(SAP Status) %s\n", errorMessage.c_str());
         }
@@ -349,8 +346,8 @@ void SaperaFG::sapStatusCallback(quint64 t, const std::string &errorMessage)
         if (t & SapAcquisition::EventFrameLost) msg = msg + " Frame Lost!";
         if (t & SapAcquisition::EventDataOverflow) msg = msg + " Data Overflow!";
         if (!msg.size()) return;
-        if (spikeGL) {
-            spikeGL->pushConsoleError(std::string("(SAP Acq Event) ") + msg);
+        if (xtOut) {
+            xtOut->pushConsoleError(std::string("(SAP Acq Event) ") + msg);
         }
         else
             fprintf(stderr, "(SAP Acq Event) %s\n", msg.c_str());
@@ -364,10 +361,10 @@ void SaperaFG::resetHardware(int serverIndex, int timeout_ms  /* default 3.5 sec
     SapManager::SetResetTimeout(timeout_ms);
     if (!SapManager::ResetServer(serverIndex, 1)) {
         _snprintf_c(tmp, sizeof(tmp), "Reset hardware device %d: FAIL (Sapera Error: '%s')", serverIndex, SapManager::GetLastStatus());
-        spikeGL->pushConsoleWarning(tmp);
+        xtOut->pushConsoleWarning(tmp);
     } else {
         _snprintf_c(tmp, sizeof(tmp), "Reset hardware device %d: success", serverIndex);
-        spikeGL->pushConsoleMsg(tmp);
+        xtOut->pushConsoleMsg(tmp);
     }
 }
 
@@ -392,7 +389,7 @@ bool SaperaFG::setupAndStartAcq()
 
         if (!hShm ) {
             _snprintf_c(tmp, sizeof(tmp), "Could not open shared memory (%d).", GetLastError());
-            spikeGL->pushConsoleError(tmp);
+            xtOut->pushConsoleError(tmp);
             return false;
         }
 
@@ -405,7 +402,7 @@ bool SaperaFG::setupAndStartAcq()
 
         if (!sharedMemory) {
             _snprintf_c(tmp, sizeof(tmp), "Could not map shared memory (%d).", GetLastError());
-            spikeGL->pushConsoleError(tmp);
+            xtOut->pushConsoleError(tmp);
             CloseHandle(hShm); hShm = nullptr;
             return false;
         }
@@ -413,7 +410,7 @@ bool SaperaFG::setupAndStartAcq()
         writer = new PagedScanWriter(nChansPerScan, shmMetaSize, sharedMemory, shmSize, shmPageSize, chanMapping);
         writer->ErrFunc = &PSWErrFunc; writer->DbgFunc = &PSWDbgFunc;
         _snprintf_c(tmp, sizeof(tmp), "Connected to shared memory \"%s\" size: %u  pagesize: %u metadatasize: %u", shmName.c_str(), shmSize, shmPageSize, shmMetaSize);
-        spikeGL->pushConsoleDebug(tmp);
+        xtOut->pushConsoleDebug(tmp);
     }
 
     if (serverIndex < 0) serverIndex = 1;
@@ -426,7 +423,7 @@ bool SaperaFG::setupAndStartAcq()
     SapManager::GetServerName(serverIndex, acqServerName, sizeof(acqServerName));
     SapManager::GetResourceName(loc, SapManager::ResourceAcq, acqResName, sizeof(acqResName));
     _snprintf_c(tmp, sizeof(tmp), "Server name: %s   Resource name: %s  ConfigFile: %s", acqServerName, acqResName, configFilename.c_str());
-    spikeGL->pushConsoleDebug(tmp);
+    xtOut->pushConsoleDebug(tmp);
 
     if (SapManager::GetResourceCount(acqServerName, SapManager::ResourceAcq) > 0)
     {
@@ -439,16 +436,16 @@ bool SaperaFG::setupAndStartAcq()
         xfer = new SapAcqToBuf(acq, buffers, acqCallback, nullptr);
 
         _snprintf_c(tmp, sizeof(tmp), "Will use buffer memory: %dMB in %d sapbufs", BUFFER_MEMORY_MB, nbufs);
-        spikeGL->pushConsoleDebug(tmp);
+        xtOut->pushConsoleDebug(tmp);
 
         // Create acquisition object
         if (acq && !*acq && !acq->Create()) {
-            spikeGL->pushConsoleError("Failed to Create() acquisition object");
+            xtOut->pushConsoleError("Failed to Create() acquisition object");
             freeSapHandles();
             return false;
         }
     } else  {
-        spikeGL->pushConsoleError("GetResourceCount() returned <= 0");
+        xtOut->pushConsoleError("GetResourceCount() returned <= 0");
         freeSapHandles();
         return false;
     }
@@ -459,14 +456,14 @@ bool SaperaFG::setupAndStartAcq()
 
     // Create buffer object
     if (buffers && !*buffers && !buffers->Create()) {
-        spikeGL->pushConsoleError("Failed to Create() buffers object");
+        xtOut->pushConsoleError("Failed to Create() buffers object");
         freeSapHandles();
         return false;
     }
 
     // Create transfer object
     if (xfer && !*xfer && !xfer->Create()) {
-        spikeGL->pushConsoleError("Failed to Create() xfer object");
+        xtOut->pushConsoleError("Failed to Create() xfer object");
         freeSapHandles();
         return false;
     }
@@ -476,34 +473,34 @@ bool SaperaFG::setupAndStartAcq()
     return !!(xfer->Grab());
 }
 
-void SaperaFG::handleSpikeGLCommand(XtCmd *xt)
+void SaperaFG::handleXtCommand(XtCmd *xt)
 {
     (void)xt;
     switch (xt->cmd) {
     case XtCmd_Exit:
-        spikeGL->pushConsoleDebug("Got exit command.. exiting gracefully...");
-        exit(0);
+        xtOut->pushConsoleDebug("Got exit command.. IGNORING");
+        //exit(0);
         break;
     case XtCmd_Test:
-        spikeGL->pushConsoleDebug("Got 'TEST' command, replying with this debug message!");
+        xtOut->pushConsoleDebug("Got 'TEST' command, replying with this debug message!");
         break;
     case XtCmd_GrabFrames: {
         XtCmdGrabFrames *x = static_cast<XtCmdGrabFrames *>(xt);
-        spikeGL->pushConsoleDebug("Got 'GrabFrames' command");
+        xtOut->pushConsoleDebug("Got 'GrabFrames' command");
         if (x->ccfFile[0]) configFilename = x->ccfFile;
         if (x->frameH > 0) desiredHeight = x->frameH;
         if (x->frameW > 0) desiredWidth = x->frameW;
         if (x->numChansPerScan > 0) nChansPerScan = unsigned(x->numChansPerScan);
         else {
             nChansPerScan = 1;
-            spikeGL->pushConsoleWarning("FIXME: nChansPerScan was not specified in XtCmd_GrabFrames!");
+            xtOut->pushConsoleWarning("FIXME: nChansPerScan was not specified in XtCmd_GrabFrames!");
         }
         if (x->shmPageSize <= 0 || x->shmSize <= 0 || !x->shmName[0]) {
-            spikeGL->pushConsoleError("FIXME: shmPageSize,shmName,and shmSize need to be specified in XtCmd_GrabFrames!");
+            xtOut->pushConsoleError("FIXME: shmPageSize,shmName,and shmSize need to be specified in XtCmd_GrabFrames!");
             break;
         }
         if (x->shmPageSize > x->shmSize) {
-            spikeGL->pushConsoleError("FIXME: shmPageSize cannot be > shmSize in XtCmd_GrabFrames!");
+            xtOut->pushConsoleError("FIXME: shmPageSize cannot be > shmSize in XtCmd_GrabFrames!");
             break;
         }
         shmPageSize = unsigned(x->shmPageSize);
@@ -519,13 +516,13 @@ void SaperaFG::handleSpikeGLCommand(XtCmd *xt)
         }
         extraAI = x->use_extra_ai;
         if (!setupAndStartAcq())
-            spikeGL->pushConsoleWarning("Failed to start acquisition.");
+            xtOut->pushConsoleWarning("Failed to start acquisition.");
         break;
     }
     case XtCmd_FPGAProto: {
         XtCmdFPGAProto *x = static_cast<XtCmdFPGAProto *>(xt);
         if (x->len >= 16) {
-            spikeGL->pushConsoleDebug("Got 'FPGAProto' command");
+            xtOut->pushConsoleDebug("Got 'FPGAProto' command");
             fpga->protocol_Write(x->cmd_code, x->value1, x->value2);
         }
     }
@@ -536,19 +533,19 @@ void SaperaFG::handleSpikeGLCommand(XtCmd *xt)
         x->getParms(p);
         char buf[512];
         _snprintf_c(buf, sizeof(buf), "Got 'OpenPort' command with params: %d,%d,%d,%d,%d,%d", p[0], p[1], p[2], p[3], p[4], p[5]);
-        spikeGL->pushConsoleDebug(buf);
+        xtOut->pushConsoleDebug(buf);
         if (fpga) delete fpga;
-        fpga = new FPGA(p, spikeGL, spikeGLIn);
+        fpga = new FPGA(p, xtOut);
 
         if (fpga->isOk())
-            spikeGL->pushConsoleMsg(fpga->port() + " opened ok; FPGA communications enabled");
+            xtOut->pushConsoleMsg(fpga->port() + " opened ok; FPGA communications enabled");
         else
-            spikeGL->pushConsoleError("COM port error -- failed to start FPGA communications!");
+            xtOut->pushConsoleError("COM port error -- failed to start FPGA communications!");
     }
         break;
     case XtCmd_ServerResource: {
         XtCmdServerResource *x = static_cast<XtCmdServerResource *>(xt);
-        spikeGL->pushConsoleDebug("Got 'ServerResource' command");
+        xtOut->pushConsoleDebug("Got 'ServerResource' command");
         if (x->serverIndex < 0 || x->resourceIndex < 0) {
             probeHardware();
         } else {
@@ -556,7 +553,7 @@ void SaperaFG::handleSpikeGLCommand(XtCmd *xt)
             resourceIndex = x->resourceIndex;
             char buf[64];
             _snprintf_c(buf, sizeof(buf), "Setting serverIndex=%d resourceIndex=%d", serverIndex, resourceIndex);
-            spikeGL->pushConsoleDebug(buf);
+            xtOut->pushConsoleDebug(buf);
         }
     }
         break;
@@ -565,7 +562,7 @@ void SaperaFG::handleSpikeGLCommand(XtCmd *xt)
     }
 }
 
-void SaperaFG::tellSpikeGLAboutSignalStatus()
+void SaperaFG::publishSignalStatus()
 {
     if (!acq) return;
     static double tLast = 0.;
@@ -582,7 +579,7 @@ void SaperaFG::tellSpikeGLAboutSignalStatus()
         {
             XtCmdClkSignals cmd;
             cmd.init(!!PixelCLKSignal1, !!PixelCLKSignal2, !!PixelCLKSignal3, !!HSyncSignal, !!VSyncSignal);
-            spikeGL->pushCmd(&cmd);
+            xtOut->pushCmd(&cmd);
         }
         tLast = getTime();
     }
@@ -594,7 +591,7 @@ void SaperaFG::probeHardware()
     SapManager::SetDisplayStatusMode(SapManager::StatusCallback, sapStatusCallback, nullptr); // so we get errors reported properly from SAP
     int nServers = SapManager::GetServerCount();
     _snprintf_c(buf, sizeof(buf), "ServerCount: %d", nServers);
-    if (spikeGL) spikeGL->pushConsoleDebug(buf);
+    if (xtOut) xtOut->pushConsoleDebug(buf);
     else fprintf(stderr, "%s\n", buf);
     for (int i = 0; i < nServers; ++i) {
         resetHardware(i);
@@ -607,12 +604,12 @@ void SaperaFG::probeHardware()
                 char rname[64];
                 if (!SapManager::GetResourceName(i, SapManager::ResourceAcq, j, rname, sizeof(rname))) continue;
                 _snprintf_c(buf, sizeof(buf), "#%d,%d \"%s\" - \"%s\", type %d accessible: %s",i,j,sname,rname,type,accessible ? "yes" : "no");
-                if (spikeGL) spikeGL->pushConsoleDebug(buf);
+                if (xtOut) xtOut->pushConsoleDebug(buf);
                 else fprintf(stderr, "%s\n", buf);
-                if (spikeGL) {
+                if (xtOut) {
                     XtCmdServerResource r;
                     r.init(sname, rname, i, j, type, !!accessible);
-                    spikeGL->pushCmd(&r);
+                    xtOut->pushCmd(&r);
                 }
             }
         }
@@ -637,29 +634,28 @@ void SaperaFG::probeHardware()
 
 SaperaFG::SaperaFG(const std::string &ccf_in)
 {
+    thr.setObjectName("SaperaFG");
     // NB: it's vital these two objects get constructed before any other calls.. since other code assumes they are valid and may call these objects' methods
-    spikeGL = new SpikeGLOutThread;
-    spikeGLIn = new SpikeGLInputThread;
+    xtOut = new XtCmdQueueOut(this); // these will "live" in the same thread as us
+    xtIn = new XtCmdQueueIn(this);
+
+    // communication from Outside World -> this class
+    connect(xtIn, &XtCmdQueue::gotCmd, this, &SaperaFG::gotCmd);
+    // communication from this class -> Outside World
+    connect(xtOut, &XtCmdQueue::gotCmd, this, &SaperaFG::translateOutCmd);
 
     if (!ccf_in.empty()) configFilename = ccf_in;
 
-    //TODO HERE: connect spikeGL, spikeGLIn to this class for handling XtCmds (was: old timerFunc mechanism)
-
-    spikeGL->start();
-
-    spikeGL->pushConsoleMsg("SaperaFG slave started.");
-
-    spikeGLIn->start();
-    instance = this;
+    xtOut->pushConsoleMsg("SaperaFG slave started.");
 }
 
 SaperaFG::~SaperaFG()
 {
-    instance = nullptr;
+    stop(); // required because we have dependent QObjects
     freeSapHandles();
     (void)delete fpga, fpga = nullptr;
-    (void)delete spikeGL, spikeGL = nullptr;
-    (void)delete spikeGLIn, spikeGLIn = nullptr;
+    (void)delete xtOut, xtOut = nullptr;
+    (void)delete xtIn, xtIn = nullptr;
     (void)delete writer, writer = nullptr;
     if (sharedMemory) {
         UnmapViewOfFile(sharedMemory);
@@ -668,97 +664,54 @@ SaperaFG::~SaperaFG()
     if (hShm) (void)CloseHandle(hShm), hShm = nullptr;
 }
 
-#if 0
-static void timerFunc()
+void SaperaFG::gotCmd(XtCmdQueue *q)
 {
-    if (!spikeGLIn) return;
-    int fail = 0;
-
-    while (spikeGLIn->cmdQSize() && fail < 10) {
-        std::vector<BYTE> buf;
-        XtCmd *xt;
-        if ((xt = spikeGLIn->popCmd(buf, 10))) {
-            // todo.. handle commands here...
-            handleSpikeGLCommand(xt);
-        }
-        else ++fail;
-
+    XtCmdQueue::Buffer buf;
+    XtCmd *xt = nullptr;
+    while ((xt = q->popCmd(buf))) {
+        handleXtCommand(xt);
     }
-    if (spikeGL) tellSpikeGLAboutSignalStatus();
-    /*
-#define TESTING_SPIKEGL_INTEGRATION
-#ifdef TESTING_SPIKEGL_INTEGRATION
-    if (acq)
-        for (int iter = 0; iter < 2000; ++iter) {
-            // for testing.. put fake frames
-            char buf[144 * 32 + sizeof(XtCmdImg) + 128];
-            XtCmdImg *xt = (XtCmdImg *)buf;
-            //::memset(xt->img, (iter % 2 ? 0x4f : 0), 144 * 32);
-            xt->init(144, 32);
-            for (int i = 0; i < 72 * 32; ++i) ((short *)xt->img)[i] = (short)(sinf(((iter + i) % 2560) / 2560.0f)*32768.f);
-            spikeGL->pushCmd(xt);
+    publishSignalStatus();
+}
+
+void SaperaFG::translateOutCmd(XtCmdQueue *q)
+{
+    XtCmdQueue::Buffer buf;
+    XtCmd *xt = nullptr;
+    while ((xt = q->popCmd(buf))) {
+        switch(xt->cmd) {
+        case XtCmd_ClkSignals: {
+            auto x = reinterpret_cast<XtCmdClkSignals *>(xt);
+            emit clockSignals(x->isPxClk1(), x->isPxClk2(), x->isPxClk3(), x->isHSync(), x->isVSync());
         }
-#endif
-*/
-}
-
-static VOID CALLBACK timerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
-{
-    (void)hwnd; (void)uMsg; (void)idEvent; (void)dwTime;
-    timerFunc();
-}
-
-
-static void setupTimerFunc()
-{
-    if (!timerId) {
-        timerId = ::SetTimer(nullptr, NULL, 100, timerProc);
-        if (!timerId) {
-            spikeGL->pushConsoleError("Could not create timer at starup!");
+            break;
+        case XtCmd_FPS: {
+            auto x = reinterpret_cast<XtCmdFPS *>(xt);
+            emit fps(double(x->param));
         }
-    }
-}
-
-#endif
-/*
-void Execute(VoidLambda && messagePump) { 
-    const VoidLambda mp(std::move(messagePump));
-    Execute(mp);
-}
-
-void Execute(const VoidLambda &mpump)
-{
-    // NB: it's vital these two objects get constructed before any other calls.. since other code assumes they are valid and may call these objects' methods
-    spikeGL = new SpikeGLOutThread;
-    spikeGLIn = new SpikeGLInputThread;
-
-    killAllOtherInstances();
-
-    setupTimerFunc();
-    handleSpikeGLEnvParms();
-
-    spikeGL->start();
-
-    spikeGL->pushConsoleMsg("SaperaFG slave started.");
-
-    spikeGLIn->start();
-
-    if (bool(mpump)) {
-        mpump();
-    } else {
-        // message pump...
-        MSG msg;
-        BOOL bRet;
-        while ((bRet = GetMessage(&msg, nullptr, 0, 0)) != 0)  {
-            if (bRet == -1)  {
-            // Handle Error
-            } else {
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
+            break;
+        case XtCmd_ServerResource: {
+            auto x = reinterpret_cast<XtCmdServerResource *>(xt);
+            emit serverResource(x->serverName, x->resourceName, x->serverIndex, x->resourceIndex, x->serverType, x->accessible);
+        }
+            break;
+        case XtCmd_ConsoleMessage: {
+            auto x = reinterpret_cast<XtCmdConsoleMsg *>(xt);
+            const char * message = static_cast<char *>(&x->msg[0]);
+            if (message[0]) {
+                if (x->msgType == XtCmdConsoleMsg::Normal)
+                    Log("%s", message);
+                else if (x->msgType == XtCmdConsoleMsg::Warning)
+                    Warning("%s", message);
+                else if (x->msgType == XtCmdConsoleMsg::Error)
+                    Error("%s", message);
+                else
+                    Error("(UNKNWON MESSAGE TYPE) %s", message);
             }
         }
+            break;
+        default:
+            Error() << "Got unhandled OUT command: " << xt->cmd;
+        }
     }
 }
-*/
-
-

@@ -686,22 +686,22 @@ void SaperaFG::translateOutCmd(XtCmdQueue *q)
     while ((xt = q->popCmd(buf))) {
         switch(xt->cmd) {
         case XtCmd_ClkSignals: {
-            auto x = reinterpret_cast<XtCmdClkSignals *>(xt);
+            auto x = static_cast<XtCmdClkSignals *>(xt);
             emit clockSignals(x->isPxClk1(), x->isPxClk2(), x->isPxClk3(), x->isHSync(), x->isVSync());
         }
             break;
         case XtCmd_FPS: {
-            auto x = reinterpret_cast<XtCmdFPS *>(xt);
+            auto x = static_cast<XtCmdFPS *>(xt);
             emit fps(double(x->param));
         }
             break;
         case XtCmd_ServerResource: {
-            auto x = reinterpret_cast<XtCmdServerResource *>(xt);
+            auto x = static_cast<XtCmdServerResource *>(xt);
             emit serverResource(x->serverName, x->resourceName, x->serverIndex, x->resourceIndex, x->serverType, x->accessible);
         }
             break;
         case XtCmd_ConsoleMessage: {
-            auto x = reinterpret_cast<XtCmdConsoleMsg *>(xt);
+            auto x = static_cast<XtCmdConsoleMsg *>(xt);
             const char * message = static_cast<char *>(&x->msg[0]);
             if (message[0]) {
                 if (x->msgType == XtCmdConsoleMsg::Normal)

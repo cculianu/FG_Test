@@ -44,6 +44,7 @@
 
 void SaperaFG::acqCallback()
 {
+    if (isFinished()) return;
     if (!gotFirstXferCallback)
         (void)xtOut->pushConsoleDebug("acqCallback called at least once! Yay!"), gotFirstXferCallback = true;
     if (!buffers) {
@@ -271,6 +272,7 @@ void SaperaFG::acqCallback()
 
 void SaperaFG::startFrameCallback()
 {
+    if (isFinished()) return;
     if (!gotFirstStartFrameCallback)
         (void)xtOut->pushConsoleDebug("'startFrameCallback' called at least once! Yay!"), gotFirstStartFrameCallback = true;
 }
@@ -295,6 +297,7 @@ void SaperaFG::freeSapHandles()
 
 void SaperaFG::sapAcqCallback(quint64 t)
 {
+    if (isFinished()) return;
     if (xtOut) {
         char buf[2048];
         _snprintf_c(buf, sizeof(buf), "SAP ACQ CALLBACK CALLED WITH eventtype=%d", int(t));
@@ -331,6 +334,7 @@ void SaperaFG::sapAcqCallback(quint64 t)
 
 void SaperaFG::sapStatusCallback(quint64 t, const std::string &errorMessage)
 {
+    if (isFinished()) return;
     if (!errorMessage.empty()) {
         if (xtOut) {
             xtOut->pushConsoleDebug(std::string("(SAP Status) ") + errorMessage);

@@ -24,6 +24,9 @@ public:
     /// sequence involves the destruction of child QObjects!
     virtual bool stop();
 
+    bool isRunning() const { return thr.isRunning(); }
+    bool isFinished() const { return thr.isFinished(); }
+
     /// Executes lambda by posting it as an event to the WorkerThread's event queue. Returns immediately.
     void postLambda(const std::function<void(void)> & lambda);
     void postLambda(std::function<void(void)> && lambda);

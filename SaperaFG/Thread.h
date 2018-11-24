@@ -4,6 +4,7 @@
 #include <QThread>
 
 // A slightly different API to QThread.
+// TODO: Get rid of this class after we get rid of the PagedScanWriter class.
 class Thread : protected QThread
 {
 public:

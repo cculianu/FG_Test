@@ -7,7 +7,6 @@ win32 {
         LIBS += $${SaperaDir}/Lib/Win64/SapClassBasic.lib psapi.lib User32.lib
         DEFINES += HAVE_SAPERA _CRT_SECURE_NO_WARNINGS
         SOURCES += \
-            SaperaFG/FPGA.cpp \
             SaperaFG/PagedRingBuffer.cpp \
             SaperaFG/SaperaFG.cpp \
             SaperaFG/Thread.cpp \
@@ -18,7 +17,6 @@ win32 {
             SaperaFG/CommonIncludes.h\
             SaperaFG/Globals.h \
             SaperaFG/SaperaFG.h \
-            SaperaFG/FPGA.h \
             SaperaFG/PagedRingBuffer.h \
             SaperaFG/Thread.h \
             SaperaFG/XtCmd.h \

@@ -32,9 +32,14 @@ public:
     QSerialPort::Parity parity() const;           ///< the current parity setting
     QSerialPort::StopBits stopBits() const;       ///< the current stop bits setting
 
+public slots:
+    void sendCharacters(QString);
+    void protocol_Write(int CMD_Code, int Value_1, qint32 Value_2); ///< formats a command and sends it using sendCharacters(). Format: "~%02d%05d%06d\r\n"
+
 signals:
     void portSettingsChanged(QString);
-    void sendCharacters(QString);
+    void charactersOut(QString); ///< emitted when characters were sent out through the port
+    void charactersIn(QString); ///< emitted when characters arrived in from the port
 
 private slots:
     void comboBoxesChanged();

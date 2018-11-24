@@ -6,13 +6,11 @@
 #include <vector>
 #include "CommonIncludes.h"
 
-class FPGA;
 class XtCmdQueue;
 class XtCmdQueueOut;
 class XtCmdQueueIn;
 class PagedScanWriter;
 struct XtCmd;
-
 
 class SaperaFG : public WorkerThread {
     Q_OBJECT
@@ -70,8 +68,6 @@ private:
     UINT_PTR timerId = 0;
     bool gotFirstXferCallback = false, gotFirstStartFrameCallback = false;
     int bpp, pitch, width=0, height=0;
-
-    FPGA *fpga = nullptr;
 
     int desiredWidth = 144;
     int desiredHeight = 32;

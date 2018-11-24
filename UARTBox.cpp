@@ -9,6 +9,7 @@
 #include <map>
 #include <chrono>
 #include <QLineEdit>
+#include <stdio.h>
 
 namespace  {
     const QVector<QString> flowControlStrings = {
@@ -38,16 +39,15 @@ UARTBox::UARTBox(QWidget *parent) :
 
     connect(ui->le, &QLineEdit::returnPressed, [this]{
         QString line = ui->le->text().trimmed() + "\r\n"; //TODO: figure out if we need the \r\n?
-        ui->tb->insertPlainText(line);
-        ui->tb->ensureCursorVisible();
         ui->le->clear();
-        emit sendCharacters(line);
+        sendCharacters(line);
     });
 
     wrk = new SerialPortWorker;
     connect(wrk, SIGNAL(gotCharacters(QString)), this, SLOT(gotCharacters(QString)));
+    connect(wrk, SIGNAL(gotCharacters(QString)), this, SIGNAL(charactersIn(QString))); // fwd signal
     connect(this, SIGNAL(portSettingsChanged(QString)), wrk, SLOT(applyNewPortSettings(QString)));
-    connect(this, SIGNAL(sendCharacters(QString)), wrk, SLOT(sendCharacters(QString)));
+    connect(this, SIGNAL(charactersOut(QString)), wrk, SLOT(sendCharacters(QString)));
     connect(wrk, SIGNAL(portError(QString)), this, SLOT(portError(QString)));
     using namespace std::chrono;
     QTimer::singleShot(300ms, this, SLOT(comboBoxesChanged())); ///< open port based on defaults we had from settings, etc
@@ -57,6 +57,26 @@ UARTBox::~UARTBox()
 {
     delete wrk; wrk = nullptr;
     delete ui; ui = nullptr;
+}
+
+void UARTBox::sendCharacters(QString chars)
+{
+    ui->tb->insertPlainText(chars);
+    ui->tb->ensureCursorVisible();
+    emit charactersOut(chars);  // will auto-call wrk->sendCharacter() slot
+}
+
+void UARTBox::protocol_Write(int CMD_Code, int Value_1, qint32 Value_2)
+{
+    char    str[512];
+    auto fmtStrFunc =
+#ifdef Q_OS_WIN
+    _snprintf_c;
+#else
+    snprintf;
+#endif
+    fmtStrFunc(str, sizeof(str), "%c%02d%05d%06d\r\n", '~', CMD_Code, Value_1, Value_2);
+    sendCharacters(QString::fromUtf8(str));
 }
 
 void UARTBox::setupComboBoxes()

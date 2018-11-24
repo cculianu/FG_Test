@@ -13,11 +13,11 @@ enum XtCmds {
     XtCmd_Test, // test command. does nothing but used to test communication
     XtCmd_Img, // got image from subprocess -> Main App
     XtCmd_ConsoleMessage, // basically ends up in Main App's console
-    XtCmd_Exit, // sent from Main App -> slave app to tell it to exit gracefully...
+    //XtCmd_Exit, // sent from Main App -> slave app to tell it to exit gracefully...
     XtCmd_GrabFrames, // sent from Main App -> slave app, tell it to start grabbing frames..
-    XtCmd_FPGAProto, // sent from Main App -> slave app to do low-level FPGA protocol commands
+    //XtCmd_FPGAProto, // sent from Main App -> slave app to do low-level FPGA protocol commands
     XtCmd_ClkSignals, // sent from slave app -> Main App to update GUI
-    XtCmd_OpenPort, // sent from Main App -> slave app to start an acquisition
+    //XtCmd_OpenPort, // sent from Main App -> slave app to start an acquisition
     XtCmd_ServerResource, // sent Main App <-> slave app (both directions) to either list the available server resources or set the active server
     XtCmd_FPS, ///< sent from slave process -> Main App to report FPS (frames per second) coming in from the camera
     XtCmd_N // num commands in enum
@@ -126,6 +126,7 @@ struct XtCmdConsoleMsg : public XtCmd {
     }
 };
 
+/* // NO LONGER NEEDED -- was from FG_SpikeGL.exe
 struct XtCmdFPGAProto : public XtCmd {
     int cmd_code, value1, value2;
 
@@ -136,6 +137,7 @@ struct XtCmdFPGAProto : public XtCmd {
         cmd_code = cmdCode; value1 = v1; value2 = v2;
     }
 };
+*/
 
 struct XtCmdClkSignals : public XtCmd {
     void init(bool pxclk1, bool pxclk2, bool pxclk3, bool hsync, bool vsync) {
@@ -159,6 +161,7 @@ struct XtCmdFPS : public XtCmd {
     }
 };
 
+/* // NO LONGER NEEDED -- was from FG_SpikeGL.exe
 struct XtCmdOpenPort : public XtCmd {
     void init(const int parms[6]) {
         XtCmd::init();
@@ -172,6 +175,7 @@ struct XtCmdOpenPort : public XtCmd {
         }
     }
 };
+*/
 
 struct XtCmdServerResource : public XtCmd {
     char serverName[64];

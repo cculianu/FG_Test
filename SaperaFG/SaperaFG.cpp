@@ -4,7 +4,6 @@
 #include "CommonIncludes.h"
 #include "Globals.h"
 #include "XtCmd.h"
-#include "FPGA.h"
 #include "PagedRingBuffer.h"
 #include "XtCmdQueue.h"
 #include "Util.h"
@@ -481,10 +480,6 @@ void SaperaFG::handleXtCommand(XtCmd *xt)
 {
     (void)xt;
     switch (xt->cmd) {
-    case XtCmd_Exit:
-        xtOut->pushConsoleDebug("Got exit command.. IGNORING");
-        //exit(0);
-        break;
     case XtCmd_Test:
         xtOut->pushConsoleDebug("Got 'TEST' command, replying with this debug message!");
         break;
@@ -523,30 +518,6 @@ void SaperaFG::handleXtCommand(XtCmd *xt)
             xtOut->pushConsoleWarning("Failed to start acquisition.");
         break;
     }
-    case XtCmd_FPGAProto: {
-        XtCmdFPGAProto *x = static_cast<XtCmdFPGAProto *>(xt);
-        if (x->len >= 16) {
-            xtOut->pushConsoleDebug("Got 'FPGAProto' command");
-            fpga->protocol_Write(x->cmd_code, x->value1, x->value2);
-        }
-    }
-        break;
-    case XtCmd_OpenPort: {
-        int p[6];
-        XtCmdOpenPort *x = static_cast<XtCmdOpenPort *>(xt);
-        x->getParms(p);
-        char buf[512];
-        _snprintf_c(buf, sizeof(buf), "Got 'OpenPort' command with params: %d,%d,%d,%d,%d,%d", p[0], p[1], p[2], p[3], p[4], p[5]);
-        xtOut->pushConsoleDebug(buf);
-        if (fpga) delete fpga;
-        fpga = new FPGA(p, xtOut);
-
-        if (fpga->isOk())
-            xtOut->pushConsoleMsg(fpga->port() + " opened ok; FPGA communications enabled");
-        else
-            xtOut->pushConsoleError("COM port error -- failed to start FPGA communications!");
-    }
-        break;
     case XtCmd_ServerResource: {
         XtCmdServerResource *x = static_cast<XtCmdServerResource *>(xt);
         xtOut->pushConsoleDebug("Got 'ServerResource' command");
@@ -555,7 +526,7 @@ void SaperaFG::handleXtCommand(XtCmd *xt)
         } else {
             serverIndex = x->serverIndex;
             resourceIndex = x->resourceIndex;
-            char buf[64];
+            char buf[128];
             _snprintf_c(buf, sizeof(buf), "Setting serverIndex=%d resourceIndex=%d", serverIndex, resourceIndex);
             xtOut->pushConsoleDebug(buf);
         }
@@ -658,7 +629,6 @@ SaperaFG::~SaperaFG()
 {
     stop(); // required because we have dependent QObjects
     freeSapHandles();
-    (void)delete fpga, fpga = nullptr;
     (void)delete xtOut, xtOut = nullptr;
     (void)delete xtIn, xtIn = nullptr;
     (void)delete writer, writer = nullptr;

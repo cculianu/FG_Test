@@ -1,15 +1,19 @@
 #include "CommonIncludes.h"
+#include "Globals.h"
 #include "FPGA.h"
 #include "Thread.h"
+#include "SpikeGLHandlerThread.h"
 
 struct FPGA::Handler : public Thread {
     HANDLE h;
-    volatile bool pleaseStop;
+    std::atomic_bool pleaseStop = false;
     QMutex mut;
     std::list<std::string> q, rq;
     bool debugFlag[64];
+    SpikeGLOutThread *spikeGL;
+    SpikeGLInputThread *spikeGLIn;
 
-    Handler(HANDLE h) : h(h) { memset(debugFlag, 0, sizeof(debugFlag)); }
+    Handler(HANDLE h, SpikeGLOutThread *sOut, SpikeGLInputThread *sIn) : h(h), spikeGL(sOut), spikeGLIn(sIn) { memset(debugFlag, 0, sizeof(debugFlag)); }
     ~Handler(); 
 
     void threadFunc(); ///< from Thread
@@ -24,11 +28,11 @@ FPGA::Handler::~Handler() {
     }
 }
 
-FPGA::FPGA(const int parms[6])
-    : hPort1(INVALID_HANDLE_VALUE), is_ok(false), handler(nullptr)
+FPGA::FPGA(const int parms[6], SpikeGLOutThread *sOut, SpikeGLInputThread *sIn)
+    : spikeGL(sOut), spikeGLIn(sIn)
 {
     if ((is_ok = configure(parms))) {
-        handler = new Handler(hPort1);
+        handler = new Handler(hPort1, spikeGL, spikeGLIn);
         handler->start();
 
         // auto-reset dout and leds..
@@ -41,7 +45,7 @@ FPGA::FPGA(const int parms[6])
 FPGA::~FPGA()
 {
     delete handler;
-    handler = 0;
+    handler = nullptr;
     if (hPort1 != INVALID_HANDLE_VALUE) CloseHandle(hPort1);
     hPort1 = INVALID_HANDLE_VALUE;
 }
@@ -63,7 +67,7 @@ bool FPGA::configure(const int parms[6])
     default:	PortNum = "COM1";				break;
     }
 
-    hPort1 = CreateFile(tcharify(PortNum), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    hPort1 = CreateFile(tcharify(PortNum), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
     if (hPort1 != INVALID_HANDLE_VALUE)
     {
@@ -171,7 +175,7 @@ bool FPGA::setupCOM()
 {
     if (hPort1 != INVALID_HANDLE_VALUE) CloseHandle(hPort1);
 
-    hPort1 = CreateFile(tcharify(PortNum), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    hPort1 = CreateFile(tcharify(PortNum), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
 
     if (hPort1 == INVALID_HANDLE_VALUE)
     {
@@ -234,10 +238,10 @@ bool FPGA::setupCOM()
         _snprintf_c(buf, sizeof(buf), "CommTimeouts calculation --> Baud rate: %d ~= %d msPerChar", Port1DCB.BaudRate, msPerChar);
         spikeGL->pushConsoleDebug(buf);
     }
-    CommTimeouts.ReadIntervalTimeout =  msPerChar*2;
+    CommTimeouts.ReadIntervalTimeout =  DWORD(msPerChar*2);
     CommTimeouts.ReadTotalTimeoutConstant = 10;
-    CommTimeouts.ReadTotalTimeoutMultiplier = msPerChar;
-    CommTimeouts.WriteTotalTimeoutMultiplier = msPerChar*3;
+    CommTimeouts.ReadTotalTimeoutMultiplier = DWORD(msPerChar);
+    CommTimeouts.WriteTotalTimeoutMultiplier = DWORD(msPerChar*3);
     CommTimeouts.WriteTotalTimeoutConstant = 100;
 
     // Set the time-out parameters for all read and write operations on the port. 
@@ -262,7 +266,7 @@ bool FPGA::Handler::readLine(std::string & partial)
 {
     char c;
     DWORD nb = 0;
-    while (ReadFile(h, &c, 1, &nb, NULL)) {
+    while (ReadFile(h, &c, 1, &nb, nullptr)) {
         if (nb == 1) {
             partial.push_back(c);
             if (c == '\n') return true;
@@ -309,13 +313,13 @@ void FPGA::Handler::threadFunc()
             mut.unlock();
         }
         for (std::list<std::string>::const_iterator it = my.begin(); it != my.end(); ++it) {
-            DWORD nb = 0, len = (DWORD)(*it).length();
+            DWORD nb = 0, len = DWORD((*it).length());
             spikeGL->pushConsoleDebug(std::string("Attempt to write: ") + *it);
-            if (!WriteFile(h, (*it).c_str(), len, &nb, NULL)) {
+            if (!WriteFile(h, (*it).c_str(), len, &nb, nullptr)) {
                 spikeGL->pushConsoleDebug("FPGA::Handler::threadFunc() -- WriteFile() returned FALSE!");
             } else if (nb != len) {
                 char buf[512];
-                _snprintf_c(buf, sizeof(buf), "FPGA::Handler::threadFunc() -- WriteFile() returned %d, expected %d! (write timeout?)", (int)nb, (int)len);
+                _snprintf_c(buf, sizeof(buf), "FPGA::Handler::threadFunc() -- WriteFile() returned %d, expected %d! (write timeout?)", int(nb), int(len));
                 spikeGL->pushConsoleDebug(buf);
             } else {
                 ++nxferred;

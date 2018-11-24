@@ -1,11 +1,13 @@
 #pragma once
 #include "CommonIncludes.h"
 #include "Globals.h"
+class SpikeGLOutThread;
+class SpikeGLInputThread;
 
 class FPGA
 {
 public:
-    FPGA(const int parms[6]);
+    FPGA(const int parms[6], SpikeGLOutThread *, SpikeGLInputThread *);
     ~FPGA();
 
     bool isOk() const { return is_ok; }
@@ -18,17 +20,19 @@ public:
     void protocol_Write(int CMD_Code, int Value_1, INT32 Value_2);
 
 private:
+    SpikeGLOutThread    *spikeGL = nullptr;
+    SpikeGLInputThread  *spikeGLIn = nullptr;
     std::string PortNum, PortConfig;
     DCB Port1DCB;
     COMMTIMEOUTS CommTimeouts;
-    HANDLE hPort1;
-    bool is_ok;
+    HANDLE hPort1 = INVALID_HANDLE_VALUE;
+    bool is_ok = false;
 
     bool configure(const int parms[6]);
     bool setupCOM();
 
     struct Handler;
 
-    Handler *handler;
+    Handler *handler = nullptr;
 };
 

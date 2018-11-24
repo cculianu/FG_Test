@@ -1,88 +1,52 @@
 // FG_SpikeGL.cpp : Defines the entry point for the console application.
 //
+#include "SaperaFG.h"
 #include "CommonIncludes.h"
 #include "Globals.h"
 #include "XtCmd.h"
 #include "FPGA.h"
 #include "PagedRingBuffer.h"
-#include "SaperaFG.h"
+#include "SpikeGLHandlerThread.h"
 
 #include <varargs.h>
 #include <utility>
 
-// Grrr... windows headers are broken with respect strict C++ compiler warnings
-#undef INVALID_HANDLE_VALUE // was: ((HANDLE)(LONG_PTR)-1)
-#define INVALID_HANDLE_VALUE (HANDLE(LONG_PTR(-1)))
+SaperaFG *SaperaFG::instance = nullptr; /* TODO: remove this .. this is only used for PSW*Funcs below.. */
 
-SapAcquisition *acq = nullptr;
-SapBuffer      *buffers = nullptr;
-SapTransfer    *xfer = nullptr;
-std::string configFilename("J_2000+_Electrode_8tap_8bit.ccf");
-int serverIndex = -1, resourceIndex = -1;
-
-SpikeGLOutThread    *spikeGL = nullptr;
-SpikeGLInputThread  *spikeGLIn = nullptr;
-UINT_PTR timerId = 0;
-bool gotFirstXferCallback = false, gotFirstStartFrameCallback = false;
-int bpp, pitch, width=0, height=0;
-
-FPGA *fpga = nullptr;
-
-int desiredWidth = 144;
-int desiredHeight = 32;
-unsigned long long frameNum = 0;
-
-std::string shmName("COMES_FROM_XtCmd");
-unsigned shmSize(0), shmPageSize(0);
-static unsigned shmMetaSize(0);
-static std::vector<char> metaBuffer; static unsigned int *metaPtr = nullptr; static int metaIdx = 0, metaMaxIdx = 0;
-static std::vector<int> chanMapping;
-
-static void *sharedMemory = nullptr;
-static PagedScanWriter *writer = nullptr;
-static unsigned nChansPerScan = 0;
-static bool extraAI = false;
-
-static HANDLE hShm = nullptr;
-
-// some static functions..
-static void probeHardware();
-static double getTime();
-
-static inline void metaPtrInc() { if (++metaIdx >= metaMaxIdx) metaIdx = 0; }
-static inline unsigned int & metaPtrCur() { 
-    static unsigned int dummy = 0; 
-    if (metaPtr && metaIdx < metaMaxIdx) return metaPtr[metaIdx];
-    return dummy;
-}
-
-static int PSWDbgFunc(const char *fmt, ...) 
+/*static*/ int SaperaFG::PSWDbgFunc(const char *fmt, ...)
 {
+    if (!instance || !instance->spikeGL) return -1;
     char buf[1024];
     va_list l;
     int ret = 0;
     va_start(l, fmt);
     ret = vsnprintf_s(buf, sizeof(buf), fmt, l);
-    spikeGL->pushConsoleDebug(buf);
+    instance->spikeGL->pushConsoleDebug(buf);
     va_end(l);
     return ret;
 }
-static int PSWErrFunc(const char *fmt, ...)
+
+/*static*/ int SaperaFG::PSWErrFunc(const char *fmt, ...)
 {
+    if (!instance || !instance->spikeGL) return -1;
     char buf[1024];
     va_list l;
     int ret = 0;
     va_start(l, fmt);
     ret = vsnprintf_s(buf, sizeof(buf), fmt, l);
-    spikeGL->pushConsoleError(buf);
+    instance->spikeGL->pushConsoleError(buf);
     va_end(l);
     return ret;
 }
 
-static void acqCallback(SapXferCallbackInfo *info)
+/*static*/ void SaperaFG::acqCallback(SapXferCallbackInfo *info)
 {
-    (void)info;
+    SaperaFG *g = reinterpret_cast<SaperaFG *>(info->GetContext());
+    if (g) g->acqCallback();
+}
 
+void SaperaFG::acqCallback()
+{
     if (!gotFirstXferCallback)
         (void)spikeGL->pushConsoleDebug("acqCallback called at least once! Yay!"), gotFirstXferCallback = true;
     if (!buffers) {
@@ -120,7 +84,7 @@ static void acqCallback(SapXferCallbackInfo *info)
         return;
     }
 
-	size_t nScansInFrame = (len + (extraAI ? 4 : 0)) / oneScanBytes;
+    size_t nScansInFrame = (len + (extraAI ? 4 : 0)) / oneScanBytes;
 
     if (!nScansInFrame) {
         spikeGL->pushConsoleError("Frame must contain at least 1 full scan! FIXME!");
@@ -140,13 +104,13 @@ static void acqCallback(SapXferCallbackInfo *info)
 #define DUMP_FRAMES 0
 #if     DUMP_FRAMES
     double t0write = getTime(); /// XXX
-	static double tLastPrt = 0.; /// XXX
+    static double tLastPrt = 0.; /// XXX
 #endif
 
     if (pitch != w) {
         // WARNING:
-        // THIS IS A HACK TO SUPPORT THE FPGA FRAMEGRABBER FORMAT AND IS VERY SENSITIVE TO THE EXACT
-        // LAYOUT OF DATA IN THE FRAMEGRABBER!! EDIT THIS CODE IF THE LAYOUT CHANGES AND/OR WE NEED SOMETHING
+        // THIS IS A HACK TO SUPPORT THE FPGA FRAMESaperaFG FORMAT AND IS VERY SENSITIVE TO THE EXACT
+        // LAYOUT OF DATA IN THE FRAMESaperaFG!! EDIT THIS CODE IF THE LAYOUT CHANGES AND/OR WE NEED SOMETHING
         // MORE GENERIC!
 
         // pith != w, so write scan by taking each valid row of the frame... using our new writer->writePartial() method
@@ -168,56 +132,56 @@ static void acqCallback(SapXferCallbackInfo *info)
 
         const char *pc = reinterpret_cast<const char *>(pData);
 #if DUMP_FRAMES
-		// HACK TESTING HACK
-		static FILE *f = 0; static bool tryfdump = true;
-		if ( tryfdump ) {
-                        if (!f) f = fopen("c:\\frame.bin", "wb");
-			if (!f) {
-				spikeGL->pushConsoleError("Could not open d:\\frame.bin");
-				tryfdump = false;
-			}
-			else {
-				size_t s = fwrite(pc, pitch*height, bpp, f);
-				if (!s) {
-					spikeGL->pushConsoleError("Error writing frame to d:\\frmae.bin");
-				}
-				else if (t0write - tLastPrt > 1.0) {
-					spikeGL->pushConsoleDebug("Appended frame to d:\\frame.bin");
-					fflush(f);
-					tLastPrt = t0write;
-				}
-			}
-		}
-		// /HACK
+        // HACK TESTING HACK
+        static FILE *f = 0; static bool tryfdump = true;
+        if ( tryfdump ) {
+            if (!f) f = fopen("c:\\frame.bin", "wb");
+            if (!f) {
+                spikeGL->pushConsoleError("Could not open d:\\frame.bin");
+                tryfdump = false;
+            }
+            else {
+                size_t s = fwrite(pc, pitch*height, bpp, f);
+                if (!s) {
+                    spikeGL->pushConsoleError("Error writing frame to d:\\frmae.bin");
+                }
+                else if (t0write - tLastPrt > 1.0) {
+                    spikeGL->pushConsoleDebug("Appended frame to d:\\frame.bin");
+                    fflush(f);
+                    tLastPrt = t0write;
+                }
+            }
+        }
+        // /HACK
 #endif
         writer->writePartialBegin();
         for (int line = 0; line < h; ++line) {
-//            if (1) { // no swab
-                bool lastIter = false;
-                if ((lastIter = (line + 1 == h))) {
-                    metaPtrCur() = *reinterpret_cast<const unsigned int *>(pc + line*pitch);
-                    metaPtrInc();
-                }
-                if (!writer->writePartial(pc + /* <HACK> */ 8 /* </HACK> */ + (line*pitch), unsigned(w), metaPtr)) {
-                    spikeGL->pushConsoleError("PagedScanWriter::writePartial() returned false!");
-                    buffers->ReleaseAddress(const_cast<void *>(reinterpret_cast<const void *>(pData)));
+            //            if (1) { // no swab
+            bool lastIter = false;
+            if ((lastIter = (line + 1 == h))) {
+                metaPtrCur() = *reinterpret_cast<const unsigned int *>(pc + line*pitch);
+                metaPtrInc();
+            }
+            if (!writer->writePartial(pc + /* <HACK> */ 8 /* </HACK> */ + (line*pitch), unsigned(w), metaPtr)) {
+                spikeGL->pushConsoleError("PagedScanWriter::writePartial() returned false!");
+                buffers->ReleaseAddress(const_cast<void *>(reinterpret_cast<const void *>(pData)));
+                writer->writePartialEnd();
+                xfer->Abort();
+                return;
+            }
+            if (extraAI && lastIter) {
+                const unsigned short *ais_in = reinterpret_cast<const unsigned short *>(pc + 4 + line*pitch);
+                short ais[2];
+                ais[0] = static_cast<short>(int(ais_in[0]) - 32768); // convert unsigned to signed 16 bit
+                ais[1] = static_cast<short>(int(ais_in[1]) - 32768); // ditto
+                if (!writer->writePartial(reinterpret_cast<const char *>(ais), 4, metaPtr)) {
+                    spikeGL->pushConsoleError("PagedScanWriter::writePartial() for AI chans returned false!");
                     writer->writePartialEnd();
                     xfer->Abort();
                     return;
                 }
-                if (extraAI && lastIter) {
-                    const unsigned short *ais_in = reinterpret_cast<const unsigned short *>(pc + 4 + line*pitch);
-                    short ais[2];
-                    ais[0] = static_cast<short>(int(ais_in[0]) - 32768); // convert unsigned to signed 16 bit
-                    ais[1] = static_cast<short>(int(ais_in[1]) - 32768); // ditto
-                    if (!writer->writePartial(reinterpret_cast<const char *>(ais), 4, metaPtr)) {
-                        spikeGL->pushConsoleError("PagedScanWriter::writePartial() for AI chans returned false!");
-                        writer->writePartialEnd();
-                        xfer->Abort();
-                        return;
-                    }
-                }
- /*           } else { // swab
+            }
+            /*           } else { // swab
                 if (line + 1 == h) {
                     unsigned long long mts = *reinterpret_cast<const unsigned long long *>(pc + line*pitch);
                     mts = ((mts >> 56) & 0x00000000000000ff) | ((mts >> 40) & 0x000000000000ff00) | ((mts >> 24) & 0x0000000000ff0000) | ((mts >> 8) & 0x00000000ff000000) | ((mts << 8) & 0x000000ff00000000) | ((mts << 24) & 0x0000ff0000000000) | ((mts << 40) & 0x00ff000000000000) | ((mts << 56) & 0xff000000000000);
@@ -273,7 +237,7 @@ static void acqCallback(SapXferCallbackInfo *info)
     //double tfwrite = getTime(); /// XXX
 
     buffers->ReleaseAddress(const_cast<void *>(reinterpret_cast<const void *>(pData))); // Need to release it to return it to the hardware!
-    
+
 
     /// FPS RATE CODE
     static double lastTS = 0., lastPrt = -1.0;
@@ -299,17 +263,22 @@ static void acqCallback(SapXferCallbackInfo *info)
         spikeGL->pushCmd(&fps);
     }
     lastTS = now;
-    
+
 }
 
-static void startFrameCallback(SapAcqCallbackInfo *info) 
-{ 
-    (void)info;
+/*static*/ void SaperaFG::startFrameCallback(SapAcqCallbackInfo *info)
+{
+    SaperaFG *g = reinterpret_cast<SaperaFG *>(info->GetContext());
+    if (g) g->startFrameCallback();
+}
+
+void SaperaFG::startFrameCallback()
+{
     if (!gotFirstStartFrameCallback)
         (void)spikeGL->pushConsoleDebug("'startFrameCallback' called at least once! Yay!"), gotFirstStartFrameCallback = true;
 }
 
-static void freeSapHandles()
+void SaperaFG::freeSapHandles()
 {
     if (xfer && *xfer) xfer->Destroy();
     if (buffers && *buffers) buffers->Destroy();
@@ -321,19 +290,23 @@ static void freeSapHandles()
     gotFirstStartFrameCallback = gotFirstXferCallback = false;
 }
 
-static void sapAcqCallback(SapAcqCallbackInfo *p)
+/*static*/ void SaperaFG::sapAcqCallback(SapAcqCallbackInfo *p)
 {
-    if (!p) return;
-    SapAcquisition::EventType t = p->GetEventType();
-	if (spikeGL) {
-		char buf[2048];
+    SaperaFG *g = p ? reinterpret_cast<SaperaFG *>(p->GetContext()) : nullptr;
+    if (g) g->sapAcqCallback(p->GetEventType());
+}
+
+void SaperaFG::sapAcqCallback(quint64 t)
+{
+    if (spikeGL) {
+        char buf[2048];
         _snprintf_c(buf, sizeof(buf), "SAP ACQ CALLBACK CALLED WITH eventtype=%d", int(t));
-		spikeGL->pushConsoleDebug(buf);
-	}
+        spikeGL->pushConsoleDebug(buf);
+    }
     std::string msg = "";
     //SapAcquisition::EventNoPixelClk|SapAcquisition::EventFrameLost|SapAcquisition::EventPixelClk|SapAcquisition::EventDataOverflow
-	if (t & SapAcquisition::EventPixelClk) msg = msg + " Pixel Clock Resumed!";
-	if (t & SapAcquisition::EventNoPixelClk) msg = msg + " No Pixel Clock!";
+    if (t & SapAcquisition::EventPixelClk) msg = msg + " Pixel Clock Resumed!";
+    if (t & SapAcquisition::EventNoPixelClk) msg = msg + " No Pixel Clock!";
     if (t & SapAcquisition::EventFrameLost) msg = msg + " Frame Lost!";
     if (t & SapAcquisition::EventDataOverflow) msg = msg + " Data Overflow!";
     if (!msg.size()) return;
@@ -343,37 +316,52 @@ static void sapAcqCallback(SapAcqCallbackInfo *p)
         fprintf(stderr, "(SAP Acq Event) %s\n", msg.c_str());
 }
 
-static void sapStatusCallback(SapManCallbackInfo *p)
+/*static*/ void SaperaFG::sapStatusCallback(SapManCallbackInfo *p)
 {
-    if (p->GetErrorMessage() && *(p->GetErrorMessage())) {
-        if (spikeGL) {
-            spikeGL->pushConsoleDebug(std::string("(SAP Status) ") + p->GetErrorMessage());
-        } else {
-            fprintf(stderr, "(SAP Status) %s\n", p->GetErrorMessage());
+    SaperaFG *g = p ? reinterpret_cast<SaperaFG *>(p->GetContext()) : nullptr;
+    if (g) {
+        std::string errorMessage = "";
+        quint64 t = 0ULL;
+        if (p->GetErrorMessage() && *(p->GetErrorMessage())) {
+            errorMessage = p->GetErrorMessage();
         }
-	}
-	else {
-        unsigned t = unsigned(p->GetEventType());
-		std::string msg = "";
-		//SapAcquisition::EventNoPixelClk|SapAcquisition::EventFrameLost|SapAcquisition::EventPixelClk|SapAcquisition::EventDataOverflow
-		if (t & SapAcquisition::EventPixelClk) msg = msg + " Pixel Clock Resumed!";
-		if (t & SapAcquisition::EventNoPixelClk) msg = msg + " No Pixel Clock!";
-		if (t & SapAcquisition::EventFrameLost) msg = msg + " Frame Lost!";
-		if (t & SapAcquisition::EventDataOverflow) msg = msg + " Data Overflow!";
-		if (!msg.size()) return;
-		if (spikeGL) {
-			spikeGL->pushConsoleError(std::string("(SAP Acq Event) ") + msg);
-		}
-		else
-			fprintf(stderr, "(SAP Acq Event) %s\n", msg.c_str());
-	}
+        else {
+            t = quint64(p->GetEventType());
+        }
+        g->sapStatusCallback(t, errorMessage);
+    }
+}
+
+void SaperaFG::sapStatusCallback(quint64 t, const std::string &errorMessage)
+{
+    if (!errorMessage.empty()) {
+        if (spikeGL) {
+            spikeGL->pushConsoleDebug(std::string("(SAP Status) ") + errorMessage);
+        } else {
+            fprintf(stderr, "(SAP Status) %s\n", errorMessage.c_str());
+        }
+    }
+    else {
+        std::string msg = "";
+        //SapAcquisition::EventNoPixelClk|SapAcquisition::EventFrameLost|SapAcquisition::EventPixelClk|SapAcquisition::EventDataOverflow
+        if (t & SapAcquisition::EventPixelClk) msg = msg + " Pixel Clock Resumed!";
+        if (t & SapAcquisition::EventNoPixelClk) msg = msg + " No Pixel Clock!";
+        if (t & SapAcquisition::EventFrameLost) msg = msg + " Frame Lost!";
+        if (t & SapAcquisition::EventDataOverflow) msg = msg + " Data Overflow!";
+        if (!msg.size()) return;
+        if (spikeGL) {
+            spikeGL->pushConsoleError(std::string("(SAP Acq Event) ") + msg);
+        }
+        else
+            fprintf(stderr, "(SAP Acq Event) %s\n", msg.c_str());
+    }
 }
 
 // Resets server.. as per Jim Chen's recommendation 2/18/2016 email
-static void resetHardware(int serverIndex, int timeout_ms = 3500 /* default 3.5 sec reset timeout */)
-{    
+void SaperaFG::resetHardware(int serverIndex, int timeout_ms  /* default 3.5 sec reset timeout */)
+{
     char tmp[512];
-    SapManager::SetResetTimeout(timeout_ms); 
+    SapManager::SetResetTimeout(timeout_ms);
     if (!SapManager::ResetServer(serverIndex, 1)) {
         _snprintf_c(tmp, sizeof(tmp), "Reset hardware device %d: FAIL (Sapera Error: '%s')", serverIndex, SapManager::GetLastStatus());
         spikeGL->pushConsoleWarning(tmp);
@@ -383,7 +371,7 @@ static void resetHardware(int serverIndex, int timeout_ms = 3500 /* default 3.5 
     }
 }
 
-static bool setupAndStartAcq()
+bool SaperaFG::setupAndStartAcq()
 {
     SapManager::SetDisplayStatusMode(SapManager::StatusCallback, sapStatusCallback, nullptr); // so we get errors reported properly from SAP
 
@@ -397,9 +385,9 @@ static bool setupAndStartAcq()
         char tmp[512];
 
         hShm = OpenFileMapping(
-            FILE_MAP_ALL_ACCESS,   // read/write access
-            FALSE,                 // do not inherit the name
-            tcharify(shmName));               // name of mapping object
+                    FILE_MAP_ALL_ACCESS,   // read/write access
+                    FALSE,                 // do not inherit the name
+                    tcharify(shmName));               // name of mapping object
 
 
         if (!hShm ) {
@@ -409,11 +397,11 @@ static bool setupAndStartAcq()
         }
 
         sharedMemory = MapViewOfFile(
-            hShm,
-            FILE_MAP_ALL_ACCESS,  // read/write permission
-            0,
-            0,
-            shmSize);
+                    hShm,
+                    FILE_MAP_ALL_ACCESS,  // read/write permission
+                    0,
+                    0,
+                    shmSize);
 
         if (!sharedMemory) {
             _snprintf_c(tmp, sizeof(tmp), "Could not map shared memory (%d).", GetLastError());
@@ -446,7 +434,7 @@ static bool setupAndStartAcq()
 
         acq = new SapAcquisition(loc, configFilename.c_str(),
                                  static_cast<SapAcquisition::EventType>(SapAcquisition::EventNoPixelClk|SapAcquisition::EventFrameLost|SapAcquisition::EventPixelClk|SapAcquisition::EventDataOverflow/*|SapAcquisition::EventCameraBufferOverrun|SapAcquisition::EventCameraMissedTrigger|SapAcquisition::EventExternalTriggerIgnored|SapAcquisition::EventExtLineTriggerTooSlow|SapAcquisition::EventExternalTriggerTooSlow|SapAcquisition::EventLineTriggerTooFast|SapAcquisition::EventVerticalTimeout*/),
-								 sapAcqCallback);
+                                 sapAcqCallback);
         buffers = new SapBufferWithTrash(nbufs, acq);
         xfer = new SapAcqToBuf(acq, buffers, acqCallback, nullptr);
 
@@ -466,7 +454,7 @@ static bool setupAndStartAcq()
     }
 
     //register an acquisition callback
-    if (acq) 
+    if (acq)
         acq->RegisterCallback(SapAcquisition::EventStartOfFrame, startFrameCallback, nullptr);
 
     // Create buffer object
@@ -488,7 +476,7 @@ static bool setupAndStartAcq()
     return !!(xfer->Grab());
 }
 
-static void handleSpikeGLCommand(XtCmd *xt)
+void SaperaFG::handleSpikeGLCommand(XtCmd *xt)
 {
     (void)xt;
     switch (xt->cmd) {
@@ -503,7 +491,7 @@ static void handleSpikeGLCommand(XtCmd *xt)
         XtCmdGrabFrames *x = static_cast<XtCmdGrabFrames *>(xt);
         spikeGL->pushConsoleDebug("Got 'GrabFrames' command");
         if (x->ccfFile[0]) configFilename = x->ccfFile;
-        if (x->frameH > 0) desiredHeight = x->frameH; 
+        if (x->frameH > 0) desiredHeight = x->frameH;
         if (x->frameW > 0) desiredWidth = x->frameW;
         if (x->numChansPerScan > 0) nChansPerScan = unsigned(x->numChansPerScan);
         else {
@@ -550,7 +538,7 @@ static void handleSpikeGLCommand(XtCmd *xt)
         _snprintf_c(buf, sizeof(buf), "Got 'OpenPort' command with params: %d,%d,%d,%d,%d,%d", p[0], p[1], p[2], p[3], p[4], p[5]);
         spikeGL->pushConsoleDebug(buf);
         if (fpga) delete fpga;
-        fpga = new FPGA(p);
+        fpga = new FPGA(p, spikeGL, spikeGLIn);
 
         if (fpga->isOk())
             spikeGL->pushConsoleMsg(fpga->port() + " opened ok; FPGA communications enabled");
@@ -561,7 +549,7 @@ static void handleSpikeGLCommand(XtCmd *xt)
     case XtCmd_ServerResource: {
         XtCmdServerResource *x = static_cast<XtCmdServerResource *>(xt);
         spikeGL->pushConsoleDebug("Got 'ServerResource' command");
-            if (x->serverIndex < 0 || x->resourceIndex < 0) {
+        if (x->serverIndex < 0 || x->resourceIndex < 0) {
             probeHardware();
         } else {
             serverIndex = x->serverIndex;
@@ -577,7 +565,7 @@ static void handleSpikeGLCommand(XtCmd *xt)
     }
 }
 
-static void tellSpikeGLAboutSignalStatus()
+void SaperaFG::tellSpikeGLAboutSignalStatus()
 {
     if (!acq) return;
     static double tLast = 0.;
@@ -585,12 +573,12 @@ static void tellSpikeGLAboutSignalStatus()
     if (getTime() - tLast > 0.25) {
         BOOL PixelCLKSignal1, PixelCLKSignal2, PixelCLKSignal3, HSyncSignal, VSyncSignal;
         if (
-            acq->GetSignalStatus(SapAcquisition::SignalPixelClk1Present, &PixelCLKSignal1)
-            && acq->GetSignalStatus(SapAcquisition::SignalPixelClk2Present, &PixelCLKSignal2)
-            && acq->GetSignalStatus(SapAcquisition::SignalPixelClk3Present, &PixelCLKSignal3)
-            && acq->GetSignalStatus(SapAcquisition::SignalHSyncPresent, &HSyncSignal)
-            && acq->GetSignalStatus(SapAcquisition::SignalVSyncPresent, &VSyncSignal)
-            )
+                acq->GetSignalStatus(SapAcquisition::SignalPixelClk1Present, &PixelCLKSignal1)
+                && acq->GetSignalStatus(SapAcquisition::SignalPixelClk2Present, &PixelCLKSignal2)
+                && acq->GetSignalStatus(SapAcquisition::SignalPixelClk3Present, &PixelCLKSignal3)
+                && acq->GetSignalStatus(SapAcquisition::SignalHSyncPresent, &HSyncSignal)
+                && acq->GetSignalStatus(SapAcquisition::SignalVSyncPresent, &VSyncSignal)
+                )
         {
             XtCmdClkSignals cmd;
             cmd.init(!!PixelCLKSignal1, !!PixelCLKSignal2, !!PixelCLKSignal3, !!HSyncSignal, !!VSyncSignal);
@@ -600,64 +588,7 @@ static void tellSpikeGLAboutSignalStatus()
     }
 }
 
-static void timerFunc()
-{
-    if (!spikeGLIn) return;
-	int fail = 0;
-
-	while (spikeGLIn->cmdQSize() && fail < 10) {
-        std::vector<BYTE> buf;
-        XtCmd *xt;
-        if ((xt = spikeGLIn->popCmd(buf, 10))) {
-            // todo.. handle commands here...
-            handleSpikeGLCommand(xt);
-        }
-        else ++fail;
-
-    }
-    if (spikeGL) tellSpikeGLAboutSignalStatus();
-/*
-#define TESTING_SPIKEGL_INTEGRATION
-#ifdef TESTING_SPIKEGL_INTEGRATION
-    if (acq)
-        for (int iter = 0; iter < 2000; ++iter) {
-            // for testing.. put fake frames 
-            char buf[144 * 32 + sizeof(XtCmdImg) + 128];
-            XtCmdImg *xt = (XtCmdImg *)buf;
-            //::memset(xt->img, (iter % 2 ? 0x4f : 0), 144 * 32);
-            xt->init(144, 32);
-            for (int i = 0; i < 72 * 32; ++i) ((short *)xt->img)[i] = (short)(sinf(((iter + i) % 2560) / 2560.0f)*32768.f);
-            spikeGL->pushCmd(xt);
-        }
-#endif
-*/
-}
-
-static VOID CALLBACK timerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
-{
-    (void)hwnd; (void)uMsg; (void)idEvent; (void)dwTime;
-    timerFunc();
-}
-
-static void handleSpikeGLEnvParms()
-{
-    const char *envstr = const_cast<char *>(getenv("SPIKEGL_CCF"));
-
-    if (envstr && *envstr) 
-        configFilename = envstr;
-}
-
-static void setupTimerFunc()
-{
-    if (!timerId) {
-        timerId = ::SetTimer(nullptr, NULL, 100, timerProc);
-        if (!timerId) {
-            spikeGL->pushConsoleError("Could not create timer at starup!");
-        }
-    }
-}
-
-static void probeHardware()
+void SaperaFG::probeHardware()
 {
     char buf[512];
     SapManager::SetDisplayStatusMode(SapManager::StatusCallback, sapStatusCallback, nullptr); // so we get errors reported properly from SAP
@@ -688,70 +619,108 @@ static void probeHardware()
     }
 }
 
-void baseNameify(TCHAR *e)
+/*static*/ double SaperaFG::getTime()
 {
-#ifdef UNICODE
-    const TCHAR *s = e;
-    for (const TCHAR *t = s; (t = wcschr(s, L'\\')); ++s) {}
-    if (e != s) memmove(e, s, (wcslen(s) + 1)*sizeof(TCHAR));
-#else
-    const TCHAR *s = e;
-    for (const TCHAR *t = s; t = strchr(s, '\\'); ++s) {}
-    if (e != s) memmove(e, s, strlen(s) + 1);
-#endif
+    static int64_t freq = 0;
+    static int64_t t0 = 0;
+    int64_t ct;
+
+    if (!freq) {
+        QueryPerformanceFrequency(reinterpret_cast<LARGE_INTEGER *>(&freq));
+    }
+    QueryPerformanceCounter(reinterpret_cast<LARGE_INTEGER *>(&ct));   // reads the current time (in system units)
+    if (!t0) {
+        t0 = ct;
+    }
+    return double(ct - t0) / double(freq);
 }
 
-int killAllOtherInstances()
+SaperaFG::SaperaFG(const std::string &ccf_in)
 {
-    HANDLE pseudo = GetCurrentProcess();
-    TCHAR myExe[MAX_PATH];
-    DWORD myPid = GetCurrentProcessId();
-    GetProcessImageFileName(pseudo, myExe, sizeof(myExe)/sizeof(*myExe));
-    baseNameify(myExe);
+    // NB: it's vital these two objects get constructed before any other calls.. since other code assumes they are valid and may call these objects' methods
+    spikeGL = new SpikeGLOutThread;
+    spikeGLIn = new SpikeGLInputThread;
 
-    DWORD pids[16384];
-    DWORD npids;
+    if (!ccf_in.empty()) configFilename = ccf_in;
 
-    // get the process by name
-    if (!EnumProcesses(pids, sizeof(pids), &npids))
-        return -1;
+    //TODO HERE: connect spikeGL, spikeGLIn to this class for handling XtCmds (was: old timerFunc mechanism)
 
-    // convert from bytes to processes
-    npids = npids / sizeof(DWORD);
-    int ct = 0;
-    // loop through all processes
-    for (DWORD i = 0; i < npids; ++i) {
-        if (pids[i] == myPid) continue; // skip self, obviously!
-        // get a handle to the process
-        HANDLE h = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pids[i]);
-        if (h == INVALID_HANDLE_VALUE) continue;
-        TCHAR exe[MAX_PATH];
-        // get the process name
-        if (GetProcessImageFileName(h, exe, sizeof(exe)/sizeof(*exe))) {
-            baseNameify(exe);
-            // terminate all pocesses that contain the name
-            if (0 == STRCMP(exe, myExe)) {
-                TerminateProcess(h, 0);
-                ++ct;
-            }
+    spikeGL->start();
+
+    spikeGL->pushConsoleMsg("SaperaFG slave started.");
+
+    spikeGLIn->start();
+    instance = this;
+}
+
+SaperaFG::~SaperaFG()
+{
+    instance = nullptr;
+    freeSapHandles();
+    (void)delete fpga, fpga = nullptr;
+    (void)delete spikeGL, spikeGL = nullptr;
+    (void)delete spikeGLIn, spikeGLIn = nullptr;
+    (void)delete writer, writer = nullptr;
+    if (sharedMemory) {
+        UnmapViewOfFile(sharedMemory);
+        sharedMemory = nullptr;
+    }
+    if (hShm) (void)CloseHandle(hShm), hShm = nullptr;
+}
+
+#if 0
+static void timerFunc()
+{
+    if (!spikeGLIn) return;
+    int fail = 0;
+
+    while (spikeGLIn->cmdQSize() && fail < 10) {
+        std::vector<BYTE> buf;
+        XtCmd *xt;
+        if ((xt = spikeGLIn->popCmd(buf, 10))) {
+            // todo.. handle commands here...
+            handleSpikeGLCommand(xt);
         }
-        CloseHandle(h);
-    }
+        else ++fail;
 
-    if (ct && spikeGL) {
-        char buf[256];
-#ifdef UNICODE
-        _snprintf_c(buf, sizeof(buf), "killAllOtherInstances() -- killed %d other instances of %ls", ct, myExe);
-#else
-        _snprintf_c(buf, sizeof(buf), "killAllOtherInstances() -- killed %d other instances of %s", ct, myExe);
+    }
+    if (spikeGL) tellSpikeGLAboutSignalStatus();
+    /*
+#define TESTING_SPIKEGL_INTEGRATION
+#ifdef TESTING_SPIKEGL_INTEGRATION
+    if (acq)
+        for (int iter = 0; iter < 2000; ++iter) {
+            // for testing.. put fake frames
+            char buf[144 * 32 + sizeof(XtCmdImg) + 128];
+            XtCmdImg *xt = (XtCmdImg *)buf;
+            //::memset(xt->img, (iter % 2 ? 0x4f : 0), 144 * 32);
+            xt->init(144, 32);
+            for (int i = 0; i < 72 * 32; ++i) ((short *)xt->img)[i] = (short)(sinf(((iter + i) % 2560) / 2560.0f)*32768.f);
+            spikeGL->pushCmd(xt);
+        }
 #endif
-        spikeGL->pushConsoleDebug(buf);
-    }
-
-    return ct;
+*/
 }
 
-namespace SaperaFG {
+static VOID CALLBACK timerProc(HWND hwnd, UINT uMsg, UINT_PTR idEvent, DWORD dwTime)
+{
+    (void)hwnd; (void)uMsg; (void)idEvent; (void)dwTime;
+    timerFunc();
+}
+
+
+static void setupTimerFunc()
+{
+    if (!timerId) {
+        timerId = ::SetTimer(nullptr, NULL, 100, timerProc);
+        if (!timerId) {
+            spikeGL->pushConsoleError("Could not create timer at starup!");
+        }
+    }
+}
+
+#endif
+/*
 void Execute(VoidLambda && messagePump) { 
     const VoidLambda mp(std::move(messagePump));
     Execute(mp);
@@ -790,21 +759,6 @@ void Execute(const VoidLambda &mpump)
         }
     }
 }
-} // end namespace SaperaFG
+*/
 
 
-static double getTime()
-{
-    static int64_t freq = 0;
-    static int64_t t0 = 0;
-    int64_t ct;
-
-    if (!freq) {
-        QueryPerformanceFrequency(reinterpret_cast<LARGE_INTEGER *>(&freq));
-    }
-    QueryPerformanceCounter(reinterpret_cast<LARGE_INTEGER *>(&ct));   // reads the current time (in system units)
-    if (!t0) {
-        t0 = ct;
-    }
-    return double(ct - t0) / double(freq);
-}

@@ -639,6 +639,9 @@ void SaperaFG::probeHardware()
 SaperaFG::SaperaFG(const std::string &ccf_in)
 {
     thr.setObjectName("SaperaFG");
+
+    if (!ccf_in.empty()) configFilename = ccf_in;
+
     // NB: it's vital these two objects get constructed before any other calls.. since other code assumes they are valid and may call these objects' methods
     xtOut = new XtCmdQueueOut(this); // these will "live" in the same thread as us
     xtIn = new XtCmdQueueIn(this);
@@ -647,8 +650,6 @@ SaperaFG::SaperaFG(const std::string &ccf_in)
     connect(xtIn, &XtCmdQueue::gotCmd, this, &SaperaFG::gotCmd);
     // communication from this class -> Outside World
     connect(xtOut, &XtCmdQueue::gotCmd, this, &SaperaFG::translateOutCmd);
-
-    if (!ccf_in.empty()) configFilename = ccf_in;
 
     xtOut->pushConsoleMsg("SaperaFG slave started.");
 }

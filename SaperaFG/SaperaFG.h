@@ -18,6 +18,10 @@ public:
     SaperaFG(const std::string & configFileName = "");
     ~SaperaFG();
 
+public slots:
+    void listServerResources(); ///< will set up a probeHardware() and emit serverResource() for each piece of hardware found sometime later. Returns immediately.
+    void selectServerResource(int serverIndex, int resourceIndex); ///< returns immediately. selects the given camera for the next startAcq call.
+
 signals:
     void fps(double);
     void clockSignals(bool pixClk1, bool pixClk2, bool pixClk3, bool hsync, bool vsync);

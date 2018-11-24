@@ -373,7 +373,7 @@ void SaperaFG::resetHardware(int serverIndex, int timeout_ms  /* default 3.5 sec
 
 bool SaperaFG::setupAndStartAcq()
 {
-    SapManager::SetDisplayStatusMode(SapManager::StatusCallback, sapStatusCallback, nullptr); // so we get errors reported properly from SAP
+    SapManager::SetDisplayStatusMode(SapManager::StatusCallback, sapStatusCallback, this); // so we get errors reported properly from SAP
 
     freeSapHandles();
 
@@ -434,9 +434,9 @@ bool SaperaFG::setupAndStartAcq()
 
         acq = new SapAcquisition(loc, configFilename.c_str(),
                                  static_cast<SapAcquisition::EventType>(SapAcquisition::EventNoPixelClk|SapAcquisition::EventFrameLost|SapAcquisition::EventPixelClk|SapAcquisition::EventDataOverflow/*|SapAcquisition::EventCameraBufferOverrun|SapAcquisition::EventCameraMissedTrigger|SapAcquisition::EventExternalTriggerIgnored|SapAcquisition::EventExtLineTriggerTooSlow|SapAcquisition::EventExternalTriggerTooSlow|SapAcquisition::EventLineTriggerTooFast|SapAcquisition::EventVerticalTimeout*/),
-                                 sapAcqCallback);
+                                 sapAcqCallback, this);
         buffers = new SapBufferWithTrash(nbufs, acq);
-        xfer = new SapAcqToBuf(acq, buffers, acqCallback, nullptr);
+        xfer = new SapAcqToBuf(acq, buffers, acqCallback, this);
 
         _snprintf_c(tmp, sizeof(tmp), "Will use buffer memory: %dMB in %d sapbufs", BUFFER_MEMORY_MB, nbufs);
         xtOut->pushConsoleDebug(tmp);
@@ -455,7 +455,7 @@ bool SaperaFG::setupAndStartAcq()
 
     //register an acquisition callback
     if (acq)
-        acq->RegisterCallback(SapAcquisition::EventStartOfFrame, startFrameCallback, nullptr);
+        acq->RegisterCallback(SapAcquisition::EventStartOfFrame, startFrameCallback, this);
 
     // Create buffer object
     if (buffers && !*buffers && !buffers->Create()) {
@@ -537,6 +537,20 @@ void SaperaFG::handleXtCommand(XtCmd *xt)
     }
 }
 
+void SaperaFG::listServerResources() ///< will set up a probeHardware() and emit serverResource() for each piece of hardware found sometime later. Returns immediately.
+{
+    XtCmdServerResource xt;
+    xt.init("", "", -1, -1, 0, false);
+    xtIn->pushCmd(&xt); // will get handled in thread
+}
+
+void SaperaFG::selectServerResource(int serverIndex, int resourceIndex) ///< returns immediately. selects the given camera for the next startAcq call.
+{
+    XtCmdServerResource xt;
+    xt.init("", "", serverIndex, resourceIndex, 0, false);
+    xtIn->pushCmd(&xt); // will get handled in thread
+}
+
 void SaperaFG::publishSignalStatus()
 {
     if (!acq) return;
@@ -563,7 +577,7 @@ void SaperaFG::publishSignalStatus()
 void SaperaFG::probeHardware()
 {
     char buf[512];
-    SapManager::SetDisplayStatusMode(SapManager::StatusCallback, sapStatusCallback, nullptr); // so we get errors reported properly from SAP
+    SapManager::SetDisplayStatusMode(SapManager::StatusCallback, sapStatusCallback, this); // so we get errors reported properly from SAP
     int nServers = SapManager::GetServerCount();
     _snprintf_c(buf, sizeof(buf), "ServerCount: %d", nServers);
     if (xtOut) xtOut->pushConsoleDebug(buf);
